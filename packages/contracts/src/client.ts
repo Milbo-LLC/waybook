@@ -9,7 +9,7 @@ import type {
   UpdateEntryInput,
   UpdateWaybookInput,
   WaybookDTO
-} from "./index";
+} from "./index.js";
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";

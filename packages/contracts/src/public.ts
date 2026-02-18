@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { waybookDtoSchema, timelineDaySchema } from "./waybooks";
+import { waybookDtoSchema, timelineDaySchema } from "./waybooks.js";
 
 export const publicWaybookDtoSchema = z.object({
   waybook: waybookDtoSchema,

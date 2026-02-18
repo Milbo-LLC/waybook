@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { idSchema, isoDateTimeSchema } from "./common";
-import { mediaStatusSchema, mediaTypeSchema } from "./enums";
+import { idSchema, isoDateTimeSchema } from "./common.js";
+import { mediaStatusSchema, mediaTypeSchema } from "./enums.js";
 
 export const mediaDtoSchema = z.object({
   id: idSchema,

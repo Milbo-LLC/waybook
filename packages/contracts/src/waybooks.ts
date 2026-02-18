@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { cursorPageSchema, idSchema, isoDateTimeSchema } from "./common";
-import { waybookVisibilitySchema } from "./enums";
-import { entryDtoSchema } from "./entries";
+import { cursorPageSchema, idSchema, isoDateTimeSchema } from "./common.js";
+import { waybookVisibilitySchema } from "./enums.js";
+import { entryDtoSchema } from "./entries.js";
 
 export const waybookDtoSchema = z.object({
   id: idSchema,

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { cursorPageSchema, idSchema, isoDateTimeSchema, optionalLocationSchema } from "./common";
-import { mediaDtoSchema } from "./media";
+import { cursorPageSchema, idSchema, isoDateTimeSchema, optionalLocationSchema } from "./common.js";
+import { mediaDtoSchema } from "./media.js";
 
 export const entryDtoSchema = z.object({
   id: idSchema,
