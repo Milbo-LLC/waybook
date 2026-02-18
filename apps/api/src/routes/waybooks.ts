@@ -10,10 +10,10 @@ import { schema } from "@waybook/db";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { mapEntry, mapMedia, mapWaybook } from "../lib/mappers";
-import { createPublicSlug, createShareToken, hashToken } from "../lib/security";
-import { optionalAuthMiddleware, requireAuthMiddleware } from "../middleware/require-auth";
-import type { AppBindings } from "../types";
+import { mapEntry, mapMedia, mapWaybook } from "../lib/mappers.js";
+import { createPublicSlug, createShareToken, hashToken } from "../lib/security.js";
+import { optionalAuthMiddleware, requireAuthMiddleware } from "../middleware/require-auth.js";
+import type { AppBindings } from "../types.js";
 
 const listQuerySchema = z.object({
   cursor: z.string().datetime({ offset: true }).optional(),

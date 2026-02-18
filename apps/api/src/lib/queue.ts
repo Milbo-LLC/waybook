@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
-import { env } from "./env";
-import { redis } from "./redis";
+import { env } from "./env.js";
+import { redis } from "./redis.js";
 
 export const MEDIA_PROCESSING_QUEUE = "media-processing";
 

@@ -1,16 +1,16 @@
 import { cors } from "hono/cors";
 import { Hono } from "hono";
-import { auth } from "./lib/auth";
-import { db } from "./lib/db";
-import { env } from "./lib/env";
-import { redis } from "./lib/redis";
-import { rateLimitMiddleware } from "./middleware/rate-limit";
-import { authRoutes } from "./routes/auth";
-import { entryRoutes } from "./routes/entries";
-import { meRoutes } from "./routes/me";
-import { mediaRoutes } from "./routes/media";
-import { waybookRoutes } from "./routes/waybooks";
-import type { AppBindings } from "./types";
+import { auth } from "./lib/auth.js";
+import { db } from "./lib/db.js";
+import { env } from "./lib/env.js";
+import { redis } from "./lib/redis.js";
+import { rateLimitMiddleware } from "./middleware/rate-limit.js";
+import { authRoutes } from "./routes/auth.js";
+import { entryRoutes } from "./routes/entries.js";
+import { meRoutes } from "./routes/me.js";
+import { mediaRoutes } from "./routes/media.js";
+import { waybookRoutes } from "./routes/waybooks.js";
+import type { AppBindings } from "./types.js";
 
 export const app = new Hono<AppBindings>();
 

@@ -1,5 +1,5 @@
 import type { EntryDTO, MediaDTO, WaybookDTO } from "@waybook/contracts";
-import { toPublicMediaUrl } from "./r2";
+import { toPublicMediaUrl } from "./r2.js";
 
 type WaybookRow = {
   id: string;

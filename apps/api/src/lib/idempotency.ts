@@ -1,4 +1,4 @@
-import { redis } from "./redis";
+import { redis } from "./redis.js";
 
 export const claimIdempotencyKey = async (scope: string, key: string): Promise<boolean> => {
   const redisKey = `idem:${scope}:${key}`;

@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import type { AppBindings } from "../types";
+import type { AppBindings } from "../types.js";
 
 export const optionalAuthMiddleware: MiddlewareHandler<AppBindings> = async (c, next) => {
   try {

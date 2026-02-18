@@ -4,12 +4,12 @@ import { completeUploadInputSchema, createUploadUrlInputSchema } from "@waybook/
 import { schema } from "@waybook/db";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { claimIdempotencyKey } from "../lib/idempotency";
-import { mapMedia } from "../lib/mappers";
-import { mediaProcessingQueue } from "../lib/queue";
-import { createUploadUrl } from "../lib/r2";
-import { requireAuthMiddleware } from "../middleware/require-auth";
-import type { AppBindings } from "../types";
+import { claimIdempotencyKey } from "../lib/idempotency.js";
+import { mapMedia } from "../lib/mappers.js";
+import { mediaProcessingQueue } from "../lib/queue.js";
+import { createUploadUrl } from "../lib/r2.js";
+import { requireAuthMiddleware } from "../middleware/require-auth.js";
+import type { AppBindings } from "../types.js";
 
 const allowedByType: Record<string, string[]> = {
   photo: ["image/jpeg", "image/png", "image/webp", "image/heic"],

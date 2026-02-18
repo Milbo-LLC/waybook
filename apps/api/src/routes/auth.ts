@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { auth } from "../lib/auth";
-import type { AppBindings } from "../types";
+import { auth } from "../lib/auth.js";
+import type { AppBindings } from "../types.js";
 
 export const authRoutes = new Hono<AppBindings>();
 

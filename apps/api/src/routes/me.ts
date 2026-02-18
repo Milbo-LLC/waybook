@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { requireAuthMiddleware } from "../middleware/require-auth";
-import type { AppBindings } from "../types";
+import { requireAuthMiddleware } from "../middleware/require-auth.js";
+import type { AppBindings } from "../types.js";
 
 export const meRoutes = new Hono<AppBindings>();
 

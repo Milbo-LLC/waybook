@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import IORedis from "ioredis";
 import { createDb, schema } from "@waybook/db";
-import { env } from "./env";
+import { env } from "./env.js";
 
 const redis = new IORedis(env.REDIS_URL, {
   maxRetriesPerRequest: null,

@@ -1,6 +1,6 @@
 import { createAuth } from "@waybook/auth";
-import { db } from "./db";
-import { env } from "./env";
+import { db } from "./db.js";
+import { env } from "./env.js";
 
 export const auth = createAuth(db, {
   baseUrl: env.BETTER_AUTH_URL,

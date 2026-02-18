@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
-import type { AppBindings } from "../types";
-import { env } from "../lib/env";
+import type { AppBindings } from "../types.js";
+import { env } from "../lib/env.js";
 
 const hits = new Map<string, { count: number; resetAt: number }>();
 

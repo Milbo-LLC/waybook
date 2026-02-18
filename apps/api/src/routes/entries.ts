@@ -4,10 +4,10 @@ import { schema } from "@waybook/db";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { claimIdempotencyKey } from "../lib/idempotency";
-import { mapEntry, mapMedia } from "../lib/mappers";
-import { requireAuthMiddleware } from "../middleware/require-auth";
-import type { AppBindings } from "../types";
+import { claimIdempotencyKey } from "../lib/idempotency.js";
+import { mapEntry, mapMedia } from "../lib/mappers.js";
+import { requireAuthMiddleware } from "../middleware/require-auth.js";
+import type { AppBindings } from "../types.js";
 
 const listQuerySchema = z.object({
   cursor: z.string().datetime({ offset: true }).optional(),
