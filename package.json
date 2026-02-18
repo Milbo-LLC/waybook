@@ -4,10 +4,15 @@
   "packageManager": "pnpm@10.6.0",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=@waybook/api --filter=@waybook/web --filter=@waybook/worker",
+    "dev:mobile": "pnpm --filter @waybook/mobile dev",
+    "dev:all": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f postgres redis",
     "db:generate": "pnpm --filter @waybook/db db:generate",
     "db:migrate": "pnpm --filter @waybook/db db:migrate"
   },

@@ -6,43 +6,27 @@ export type SessionUser = {
   name?: string | null;
 };
 
-export const signUpWithEmail = async (input: {
-  name: string;
-  email: string;
-  password: string;
-}) => {
-  const response = await fetch(`${apiBase}/v1/auth/sign-up/email`, {
+export const startGoogleSignIn = async (callbackPath = "/app") => {
+  const callbackURL = `${window.location.origin}${callbackPath}`;
+  const response = await fetch(`${apiBase}/v1/auth/sign-in/social`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "include",
-    body: JSON.stringify(input)
+    body: JSON.stringify({
+      provider: "google",
+      callbackURL,
+      disableRedirect: true
+    })
   });
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || "Sign up failed");
+    throw new Error(message || "Google sign in failed");
   }
 
-  return response.json();
-};
-
-export const signInWithEmail = async (input: {
-  email: string;
-  password: string;
-}) => {
-  const response = await fetch(`${apiBase}/v1/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(input)
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Sign in failed");
-  }
-
-  return response.json();
+  const payload = (await response.json()) as { url?: string };
+  if (!payload.url) throw new Error("Missing Google redirect URL");
+  window.location.assign(payload.url);
 };
 
 export const getSession = async (): Promise<SessionUser | null> => {

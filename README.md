@@ -33,22 +33,34 @@ Waybook is a travel journaling and re-bookable keepsake platform built as a Type
 pnpm install
 ```
 
-2. Copy env values:
+2. Start local infrastructure:
+
+```bash
+pnpm infra:up
+```
+
+3. Copy env values:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Run database migrations:
+4. Run database migrations:
 
 ```bash
 pnpm db:migrate
 ```
 
-4. Start all apps:
+5. Start core apps (web + api + worker):
 
 ```bash
 pnpm dev
+```
+
+6. Start mobile separately (optional):
+
+```bash
+pnpm dev:mobile
 ```
 
 ## API highlights
@@ -70,5 +82,7 @@ pnpm dev
 
 ## Notes
 
-- Web auth uses Better Auth endpoints under `/v1/auth/*` with cookie sessions (`credentials: include`).
+- Auth is Google OAuth only via Better Auth (`/v1/auth/*`).
+- Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`.
+- For local Google OAuth, configure callback URL to `http://localhost:8787/v1/auth/callback/google`.
 - Railway deployment shape and environment templates are in `infra/`.

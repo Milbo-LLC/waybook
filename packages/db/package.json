@@ -20,8 +20,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo 'no lint configured for @waybook/db'",
     "test": "echo 'no tests configured for @waybook/db'",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:generate": "DOTENV_CONFIG_PATH=../../.env drizzle-kit generate",
+    "db:migrate": "DOTENV_CONFIG_PATH=../../.env drizzle-kit push --force"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.5",

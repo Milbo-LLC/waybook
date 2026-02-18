@@ -41,6 +41,9 @@ importers:
       bullmq:
         specifier: ^5.40.3
         version: 5.69.3
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@types/pg@8.16.0)(gel@2.2.0)(kysely@0.28.11)(pg@8.18.0)
@@ -176,6 +179,9 @@ importers:
       bullmq:
         specifier: ^5.40.3
         version: 5.69.3
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@types/pg@8.16.0)(gel@2.2.0)(kysely@0.28.11)(pg@8.18.0)
