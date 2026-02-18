@@ -1,0 +1,38 @@
+{
+  "name": "@waybook/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo 'no lint configured for @waybook/mobile'",
+    "test": "echo 'no tests configured for @waybook/mobile'"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.1.0",
+    "@tanstack/react-query": "^5.66.8",
+    "@waybook/contracts": "workspace:*",
+    "expo": "~52.0.35",
+    "expo-crypto": "~14.0.2",
+    "expo-image-picker": "~16.0.6",
+    "expo-location": "~18.0.8",
+    "expo-router": "~4.0.17",
+    "expo-secure-store": "~14.0.1",
+    "expo-status-bar": "~2.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.7",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.4.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.12",
+    "typescript": "^5.7.3"
+  }
+}
