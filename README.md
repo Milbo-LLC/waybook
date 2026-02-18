@@ -70,5 +70,5 @@ pnpm dev
 
 ## Notes
 
-- For local bootstrap, set `NEXT_PUBLIC_DEV_USER` and `EXPO_PUBLIC_DEV_USER` as `userId:email` to call protected endpoints before full auth UX is wired.
+- Web auth uses Better Auth endpoints under `/v1/auth/*` with cookie sessions (`credentials: include`).
 - Railway deployment shape and environment templates are in `infra/`.

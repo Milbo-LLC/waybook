@@ -18,7 +18,7 @@ app.use("*", cors({
   origin: env.CORS_ORIGIN,
   credentials: true,
   allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "X-Waybook-User"]
+  allowHeaders: ["Content-Type", "Authorization"]
 }));
 
 app.use("/v1/*", rateLimitMiddleware);

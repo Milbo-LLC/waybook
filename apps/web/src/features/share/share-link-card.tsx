@@ -13,9 +13,9 @@ export const ShareLinkCard = ({ waybookId }: { waybookId: string }) => {
           const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787"}/v1/waybooks/${waybookId}/share-links`, {
             method: "POST",
             headers: {
-              "content-type": "application/json",
-              ...(process.env.NEXT_PUBLIC_DEV_USER ? { "x-waybook-user": process.env.NEXT_PUBLIC_DEV_USER } : {})
+              "content-type": "application/json"
             },
+            credentials: "include",
             body: JSON.stringify({ expiresAt: null })
           });
 

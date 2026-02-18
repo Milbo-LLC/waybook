@@ -21,7 +21,8 @@ type RequestOptions = {
 export class WaybookApiClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly getHeaders: () => Promise<Record<string, string>> | Record<string, string> = () => ({})
+    private readonly getHeaders: () => Promise<Record<string, string>> | Record<string, string> = () => ({}),
+    private readonly credentials: RequestCredentials = "include"
   ) {}
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -33,7 +34,8 @@ export class WaybookApiClient {
 
     const requestInit: RequestInit = {
       method: options.method ?? "GET",
-      headers
+      headers,
+      credentials: this.credentials
     };
 
     if (options.body !== undefined) {

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { apiClient } from "@/lib/api";
+import { getSession } from "@/lib/auth";
+import { useEffect } from "react";
 
 export default function NewWaybookPage() {
   const router = useRouter();
@@ -12,6 +14,16 @@ export default function NewWaybookPage() {
   const [endDate, setEndDate] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const run = async () => {
+      const session = await getSession();
+      if (!session) {
+        router.replace("/login" as any);
+      }
+    };
+    void run();
+  }, [router]);
 
   return (
     <PageShell>

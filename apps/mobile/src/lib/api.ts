@@ -5,9 +5,7 @@ const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
 export const mobileApi = new WaybookApiClient(baseUrl, async () => {
   const token = await SecureStore.getItemAsync("waybook-token");
-  const devUser = process.env.EXPO_PUBLIC_DEV_USER;
   return {
-    ...(token ? { authorization: `Bearer ${token}` } : {}),
-    ...(devUser ? { "x-waybook-user": devUser } : {})
+    ...(token ? { authorization: `Bearer ${token}` } : {})
   };
 });

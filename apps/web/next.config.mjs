@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["@waybook/contracts", "@waybook/ui"],
-  experimental: {
-    typedRoutes: true
-  }
+  transpilePackages: ["@waybook/contracts", "@waybook/ui"]
 };
 
 export default nextConfig;
