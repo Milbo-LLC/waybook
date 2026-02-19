@@ -37,8 +37,8 @@ export default function AuthCallbackPage() {
 
   return (
     <PageShell>
-      <div className="rounded-2xl border bg-white p-8 text-sm text-slate-600">
-        Completing sign in...
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
       </div>
     </PageShell>
   );

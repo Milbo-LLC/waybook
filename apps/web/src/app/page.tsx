@@ -45,9 +45,18 @@ export default function MarketingPage() {
     };
   }, []);
 
+  if (loading) {
+    return (
+      <PageShell>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
-      {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {session ? (
