@@ -14,8 +14,13 @@ import type { AppBindings } from "./types.js";
 
 export const app = new Hono<AppBindings>();
 
+const allowedCorsOrigins = new Set([env.CORS_ORIGIN, ...env.AUTH_TRUSTED_ORIGINS]);
+
 app.use("*", cors({
-  origin: env.CORS_ORIGIN,
+  origin: (origin) => {
+    if (!origin) return env.CORS_ORIGIN;
+    return allowedCorsOrigins.has(origin) ? origin : "";
+  },
   credentials: true,
   allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization"]
