@@ -12,19 +12,22 @@ import { LogoutButton } from "@/components/auth/logout-button";
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [waybooks, setWaybooks] = useState<Awaited<ReturnType<typeof apiClient.listWaybooks>>["items"]>([]);
 
   useEffect(() => {
     const run = async () => {
-      const session = await getSession();
-      if (!session) {
-        router.replace("/login" as any);
-        return;
-      }
-
       try {
+        const session = await getSession();
+        if (!session) {
+          router.replace("/login" as any);
+          return;
+        }
+
         const response = await apiClient.listWaybooks();
         setWaybooks(response.items);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load waybooks");
       } finally {
         setLoading(false);
       }
@@ -45,6 +48,7 @@ export default function DashboardPage() {
         </div>
       </header>
       {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <div className="grid gap-3">
         {waybooks.map((waybook) => (
           <WaybookCard key={waybook.id} waybook={waybook} />

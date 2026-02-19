@@ -47,7 +47,9 @@ export const getSession = async (): Promise<SessionUser | null> => {
 export const signOut = async () => {
   const response = await fetch(`${apiBase}/v1/auth/sign-out`, {
     method: "POST",
-    credentials: "include"
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({})
   });
 
   if (!response.ok) {
