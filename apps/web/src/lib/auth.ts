@@ -37,9 +37,15 @@ export const getSession = async (): Promise<SessionUser | null> => {
 
   if (!response.ok) return null;
 
-  const payload = (await response.json()) as {
-    user?: SessionUser;
-  };
+  const payload = (await response.json()) as
+    | {
+        user?: SessionUser | null;
+      }
+    | null;
+
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
 
   return payload.user ?? null;
 };
