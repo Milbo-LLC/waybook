@@ -22,7 +22,7 @@ export default function LoginPage() {
             setError(null);
             setSubmitting(true);
             try {
-              await startGoogleSignIn("/app");
+              await startGoogleSignIn("/");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Unable to start Google sign in");
               setSubmitting(false);
