@@ -33,6 +33,10 @@ export const createAuth = (db: DbClient, config: AuthConfig) => {
         verification: schema.verifications
       }
     }),
+    account: {
+      // Persist OAuth state in DB to avoid cross-origin cookie state mismatches in hosted environments.
+      storeStateStrategy: "database"
+    },
     socialProviders: {
       google: {
         clientId: config.googleClientId,
