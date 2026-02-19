@@ -35,7 +35,10 @@ export const createAuth = (db: DbClient, config: AuthConfig) => {
     }),
     account: {
       // Persist OAuth state in DB to avoid cross-origin cookie state mismatches in hosted environments.
-      storeStateStrategy: "database"
+      storeStateStrategy: "database",
+      // In cross-origin web->api OAuth flows, signed state cookie persistence can be unreliable.
+      // We rely on DB-backed verification state instead.
+      skipStateCookieCheck: true
     },
     socialProviders: {
       google: {
