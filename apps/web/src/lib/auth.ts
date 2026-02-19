@@ -6,7 +6,7 @@ export type SessionUser = {
   name?: string | null;
 };
 
-export const startGoogleSignIn = async (callbackPath = "/") => {
+export const startGoogleSignIn = async (callbackPath = "/auth/callback") => {
   const callbackURL = `${window.location.origin}${callbackPath}`;
   const response = await fetch(`${apiBase}/v1/auth/sign-in/social`, {
     method: "POST",

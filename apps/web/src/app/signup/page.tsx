@@ -22,7 +22,7 @@ export default function SignupPage() {
             setError(null);
             setSubmitting(true);
             try {
-              await startGoogleSignIn("/");
+              await startGoogleSignIn("/auth/callback");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Unable to start Google sign up");
               setSubmitting(false);
