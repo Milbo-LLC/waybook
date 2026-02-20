@@ -141,7 +141,7 @@ mediaRoutes.post("/media/:mediaId/complete", requireAuthMiddleware, zValidator("
     "process-media",
     { mediaId },
     {
-      jobId: `media:${mediaId}`
+      jobId: `media-${mediaId}`
     }
   );
 
