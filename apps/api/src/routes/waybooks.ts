@@ -1,8 +1,11 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  createPublicReactionInputSchema,
   createWaybookInputSchema,
+  type DaySummaryDTO,
   type CreateWaybookInput,
   itineraryTypeSchema,
+  upsertDaySummaryInputSchema,
   updateWaybookInputSchema,
   waybookDtoSchema
 } from "@waybook/contracts";
@@ -10,7 +13,7 @@ import { schema } from "@waybook/db";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { mapEntry, mapMedia, mapWaybook } from "../lib/mappers.js";
+import { mapDaySummary, mapEntry, mapEntryGuidance, mapEntryRating, mapMedia, mapPublicReaction, mapWaybook } from "../lib/mappers.js";
 import { createPublicSlug, createShareToken, hashToken } from "../lib/security.js";
 import { optionalAuthMiddleware, requireAuthMiddleware } from "../middleware/require-auth.js";
 import type { AppBindings } from "../types.js";
@@ -42,6 +45,35 @@ const itineraryItemInputSchema = z.object({
 });
 
 export const waybookRoutes = new Hono<AppBindings>();
+
+const blockedReactionTerms = ["hate", "kill", "idiot", "stupid", "racist", "sexist"];
+
+const getRatingsByEntryIds = async (db: AppBindings["Variables"]["db"], entryIds: string[], userId: string) => {
+  if (!entryIds.length) return new Map<string, ReturnType<typeof mapEntryRating>>();
+  const rows = await db
+    .select()
+    .from(schema.entryExperienceRatings)
+    .where(and(inArray(schema.entryExperienceRatings.entryId, entryIds), eq(schema.entryExperienceRatings.userId, userId)));
+  return new Map(rows.map((row) => [row.entryId, mapEntryRating(row)]));
+};
+
+const getGuidanceByEntryIds = async (db: AppBindings["Variables"]["db"], entryIds: string[]) => {
+  if (!entryIds.length) return new Map<string, ReturnType<typeof mapEntryGuidance>>();
+  const rows = await db
+    .select()
+    .from(schema.entryGuidance)
+    .where(inArray(schema.entryGuidance.entryId, entryIds));
+  return new Map(rows.map((row) => [row.entryId, mapEntryGuidance(row)]));
+};
+
+const getDaySummariesByWaybook = async (db: AppBindings["Variables"]["db"], waybookId: string) => {
+  const rows = await db
+    .select()
+    .from(schema.waybookDaySummaries)
+    .where(eq(schema.waybookDaySummaries.waybookId, waybookId))
+    .orderBy(desc(schema.waybookDaySummaries.summaryDate));
+  return new Map(rows.map((row) => [row.summaryDate, mapDaySummary(row)]));
+};
 
 waybookRoutes.post("/waybooks", requireAuthMiddleware, zValidator("json", createWaybookInputSchema), async (c) => {
   const user = c.get("user");
@@ -263,7 +295,18 @@ waybookRoutes.get("/waybooks/:waybookId/timeline", requireAuthMiddleware, async 
     mediaByEntry.set(media.entryId, list);
   }
 
-  const entryDtos = entryRows.map((entry) => mapEntry(entry, mediaByEntry.get(entry.id) ?? []));
+  const ratingsByEntry = await getRatingsByEntryIds(db, entryIds, user.id);
+  const guidanceByEntry = await getGuidanceByEntryIds(db, entryIds);
+  const summariesByDate = await getDaySummariesByWaybook(db, waybookId);
+
+  const entryDtos = entryRows.map((entry) =>
+    mapEntry(
+      entry,
+      mediaByEntry.get(entry.id) ?? [],
+      ratingsByEntry.get(entry.id) ?? null,
+      guidanceByEntry.get(entry.id) ?? null
+    )
+  );
 
   const dayMap = new Map<string, typeof entryDtos>();
   for (const entry of entryDtos) {
@@ -275,10 +318,115 @@ waybookRoutes.get("/waybooks/:waybookId/timeline", requireAuthMiddleware, async 
 
   const days = [...dayMap.entries()]
     .sort(([a], [b]) => (a > b ? -1 : 1))
-    .map(([date, entries]) => ({ date, entries }));
+    .map(([date, entries]) => ({ date, entries, summary: summariesByDate.get(date) ?? null }));
 
   return c.json({ waybook: mapWaybook(waybook), days });
 });
+
+waybookRoutes.get("/waybooks/:waybookId/day-summaries", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+
+  const [waybook] = await db
+    .select({ id: schema.waybooks.id })
+    .from(schema.waybooks)
+    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
+    .limit(1);
+
+  if (!waybook) return c.json({ error: "not_found" }, 404);
+
+  const summaries = await db
+    .select()
+    .from(schema.waybookDaySummaries)
+    .where(eq(schema.waybookDaySummaries.waybookId, waybookId))
+    .orderBy(desc(schema.waybookDaySummaries.summaryDate));
+
+  return c.json({ items: summaries.map((row) => mapDaySummary(row)) });
+});
+
+waybookRoutes.post(
+  "/waybooks/:waybookId/day-summaries",
+  requireAuthMiddleware,
+  zValidator("json", upsertDaySummaryInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const payload = c.req.valid("json");
+
+    const [waybook] = await db
+      .select({ id: schema.waybooks.id })
+      .from(schema.waybooks)
+      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
+      .limit(1);
+
+    if (!waybook) return c.json({ error: "not_found" }, 404);
+
+    const [summary] = await db
+      .insert(schema.waybookDaySummaries)
+      .values({
+        waybookId,
+        summaryDate: payload.summaryDate,
+        summaryText: payload.summaryText ?? null,
+        topMomentEntryId: payload.topMomentEntryId ?? null,
+        moodScore: payload.moodScore ?? null,
+        energyScore: payload.energyScore ?? null
+      })
+      .onConflictDoUpdate({
+        target: [schema.waybookDaySummaries.waybookId, schema.waybookDaySummaries.summaryDate],
+        set: {
+          summaryText: payload.summaryText ?? null,
+          topMomentEntryId: payload.topMomentEntryId ?? null,
+          moodScore: payload.moodScore ?? null,
+          energyScore: payload.energyScore ?? null,
+          updatedAt: new Date()
+        }
+      })
+      .returning();
+
+    if (!summary) return c.json({ error: "create_failed" }, 500);
+    return c.json(mapDaySummary(summary), 201);
+  }
+);
+
+const updateDaySummaryInputSchema = upsertDaySummaryInputSchema.omit({ summaryDate: true });
+
+waybookRoutes.patch(
+  "/waybooks/:waybookId/day-summaries/:date",
+  requireAuthMiddleware,
+  zValidator("json", updateDaySummaryInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const date = c.req.param("date");
+    const payload = c.req.valid("json");
+
+    const [waybook] = await db
+      .select({ id: schema.waybooks.id })
+      .from(schema.waybooks)
+      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
+      .limit(1);
+
+    if (!waybook) return c.json({ error: "not_found" }, 404);
+
+    const [updated] = await db
+      .update(schema.waybookDaySummaries)
+      .set({
+        summaryText: payload.summaryText ?? null,
+        topMomentEntryId: payload.topMomentEntryId ?? null,
+        moodScore: payload.moodScore ?? null,
+        energyScore: payload.energyScore ?? null,
+        updatedAt: new Date()
+      })
+      .where(and(eq(schema.waybookDaySummaries.waybookId, waybookId), eq(schema.waybookDaySummaries.summaryDate, date)))
+      .returning();
+
+    if (!updated) return c.json({ error: "not_found" }, 404);
+    return c.json(mapDaySummary(updated));
+  }
+);
 
 waybookRoutes.get("/waybooks/:waybookId/itinerary-items", requireAuthMiddleware, async (c) => {
   const db = c.get("db");
@@ -444,7 +592,12 @@ waybookRoutes.get("/public/w/:publicSlug/timeline", optionalAuthMiddleware, asyn
     mediaByEntry.set(media.entryId, list);
   }
 
-  const entryDtos = entryRows.map((entry) => mapEntry(entry, mediaByEntry.get(entry.id) ?? []));
+  const guidanceByEntry = await getGuidanceByEntryIds(db, entryIds);
+  const summariesByDate = await getDaySummariesByWaybook(db, waybook.id);
+
+  const entryDtos = entryRows.map((entry) =>
+    mapEntry(entry, mediaByEntry.get(entry.id) ?? [], null, guidanceByEntry.get(entry.id) ?? null)
+  );
 
   const dayMap = new Map<string, typeof entryDtos>();
   for (const entry of entryDtos) {
@@ -456,10 +609,127 @@ waybookRoutes.get("/public/w/:publicSlug/timeline", optionalAuthMiddleware, asyn
 
   const days = [...dayMap.entries()]
     .sort(([a], [b]) => (a > b ? -1 : 1))
-    .map(([date, entries]) => ({ date, entries }));
+    .map(([date, entries]) => ({ date, entries, summary: summariesByDate.get(date) ?? null }));
 
   return c.json({ waybook: mapWaybook(waybook), days });
 });
+
+waybookRoutes.get("/public/w/:publicSlug/playbook", optionalAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const publicSlug = c.req.param("publicSlug");
+
+  const [waybook] = await db
+    .select()
+    .from(schema.waybooks)
+    .where(and(eq(schema.waybooks.publicSlug, publicSlug), eq(schema.waybooks.visibility, "public")))
+    .limit(1);
+
+  if (!waybook) return c.json({ error: "not_found" }, 404);
+
+  const entryRows = await db
+    .select()
+    .from(schema.entries)
+    .where(eq(schema.entries.waybookId, waybook.id))
+    .orderBy(desc(schema.entries.capturedAt));
+
+  const entryIds = entryRows.map((entry) => entry.id);
+  const mediaRows = entryIds.length
+    ? await db
+        .select()
+        .from(schema.mediaAssets)
+        .where(inArray(schema.mediaAssets.entryId, entryIds))
+        .orderBy(desc(schema.mediaAssets.createdAt))
+    : [];
+  const reactionsRows = entryIds.length
+    ? await db
+        .select()
+        .from(schema.entryReactionsPublic)
+        .where(inArray(schema.entryReactionsPublic.entryId, entryIds))
+        .orderBy(desc(schema.entryReactionsPublic.createdAt))
+    : [];
+  const guidanceByEntry = await getGuidanceByEntryIds(db, entryIds);
+  const summariesByDate = await getDaySummariesByWaybook(db, waybook.id);
+
+  const mediaByEntry = new Map<string, ReturnType<typeof mapMedia>[]>();
+  for (const media of mediaRows) {
+    const list = mediaByEntry.get(media.entryId) ?? [];
+    list.push(mapMedia(media));
+    mediaByEntry.set(media.entryId, list);
+  }
+
+  const reactionsByEntry = new Map<string, ReturnType<typeof mapPublicReaction>[]>();
+  for (const reaction of reactionsRows) {
+    const list = reactionsByEntry.get(reaction.entryId) ?? [];
+    list.push(mapPublicReaction(reaction));
+    reactionsByEntry.set(reaction.entryId, list);
+  }
+
+  const entryDtos = entryRows.map((entry) =>
+    mapEntry(entry, mediaByEntry.get(entry.id) ?? [], null, guidanceByEntry.get(entry.id) ?? null)
+  );
+
+  const dayMap = new Map<string, { date: string; steps: { entry: ReturnType<typeof mapEntry>; reactions: ReturnType<typeof mapPublicReaction>[]; confidenceScore: number }[]; summary: DaySummaryDTO | null }>();
+  for (const entry of entryDtos) {
+    const date = entry.capturedAt.slice(0, 10);
+    const bucket = dayMap.get(date) ?? { date, steps: [], summary: summariesByDate.get(date) ?? null };
+    const reactions = reactionsByEntry.get(entry.id) ?? [];
+    const confidenceScore = Math.min(100, 50 + reactions.length * 5 + (entry.guidance?.isMustDo ? 20 : 0));
+    bucket.steps.push({ entry, reactions, confidenceScore });
+    dayMap.set(date, bucket);
+  }
+
+  const days = [...dayMap.values()].sort((a, b) => (a.date > b.date ? -1 : 1));
+
+  return c.json({ waybook: mapWaybook(waybook), days });
+});
+
+waybookRoutes.post(
+  "/public/entries/:entryId/reactions",
+  optionalAuthMiddleware,
+  zValidator("json", createPublicReactionInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const entryId = c.req.param("entryId");
+    const payload = c.req.valid("json");
+    let sessionUser: { id: string } | null = null;
+    try {
+      const candidate = c.get("user");
+      if (candidate?.id) {
+        sessionUser = { id: candidate.id };
+      }
+    } catch {
+      sessionUser = null;
+    }
+    const fingerprint = c.req.header("x-waybook-fingerprint") ?? null;
+    const normalizedNote = payload.note?.trim() ?? null;
+
+    if (normalizedNote) {
+      const lower = normalizedNote.toLowerCase();
+      if (blockedReactionTerms.some((term) => lower.includes(term))) {
+        return c.json({ error: "note_flagged" }, 400);
+      }
+    }
+
+    const [entry] = await db
+      .select({ id: schema.entries.id })
+      .from(schema.entries)
+      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
+      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.visibility, "public")))
+      .limit(1);
+
+    if (!entry) return c.json({ error: "not_found" }, 404);
+
+    await db.insert(schema.entryReactionsPublic).values({
+      entryId,
+      userId: sessionUser?.id ?? null,
+      userFingerprint: fingerprint,
+      reactionType: payload.reactionType,
+      note: normalizedNote
+    });
+
+    return c.json({ success: true }, 201);
+  }
+);
 
 waybookRoutes.get("/public/share/:token", optionalAuthMiddleware, async (c) => {
   const db = c.get("db");

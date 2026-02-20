@@ -1,14 +1,26 @@
 import { PageShell } from "@/components/page-shell";
 
 async function fetchPublic(slug: string) {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787"}/v1/public/w/${slug}/timeline`, {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787"}/v1/public/w/${slug}/playbook`, {
     cache: "no-store"
   });
 
   if (!response.ok) return null;
   return (await response.json()) as {
     waybook: { title: string; description: string | null };
-    days: { date: string; entries: { id: string; textContent: string | null; capturedAt: string }[] }[];
+    days: {
+      date: string;
+      summary: { summaryText: string | null } | null;
+      steps: {
+        entry: {
+          id: string;
+          textContent: string | null;
+          capturedAt: string;
+          guidance: { isMustDo: boolean } | null;
+        };
+        confidenceScore: number;
+      }[];
+    }[];
   };
 }
 
@@ -32,11 +44,14 @@ export default async function PublicWaybookPage({ params }: { params: Promise<{ 
         {data.days.map((day) => (
           <section key={day.date} className="rounded-xl border bg-white p-4">
             <h2 className="font-semibold">{day.date}</h2>
+            {day.summary?.summaryText ? <p className="mt-1 text-sm text-slate-600">{day.summary.summaryText}</p> : null}
             <div className="mt-2 grid gap-2">
-              {day.entries.map((entry) => (
-                <article key={entry.id} className="rounded border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500">{new Date(entry.capturedAt).toLocaleTimeString()}</p>
-                  <p className="text-sm">{entry.textContent ?? "(No text)"}</p>
+              {day.steps.map((step) => (
+                <article key={step.entry.id} className="rounded border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">{new Date(step.entry.capturedAt).toLocaleTimeString()}</p>
+                  <p className="text-sm">{step.entry.textContent ?? "(No text)"}</p>
+                  {step.entry.guidance?.isMustDo ? <p className="mt-1 text-xs font-medium text-brand-700">Must do</p> : null}
+                  <p className="mt-1 text-xs text-slate-500">Confidence: {step.confidenceScore}%</p>
                 </article>
               ))}
             </div>

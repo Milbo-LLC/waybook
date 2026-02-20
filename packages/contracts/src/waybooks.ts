@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cursorPageSchema, idSchema, isoDateTimeSchema } from "./common.js";
+import { daySummaryDtoSchema, publicReactionDtoSchema } from "./experience.js";
 import { waybookVisibilitySchema } from "./enums.js";
 import { entryDtoSchema } from "./entries.js";
 
@@ -45,7 +46,8 @@ export type ListWaybooksResponse = z.infer<typeof listWaybooksResponseSchema>;
 
 export const timelineDaySchema = z.object({
   date: z.string().date(),
-  entries: z.array(entryDtoSchema)
+  entries: z.array(entryDtoSchema),
+  summary: daySummaryDtoSchema.nullable()
 });
 export type TimelineDayDTO = z.infer<typeof timelineDaySchema>;
 
@@ -54,6 +56,26 @@ export const timelineResponseSchema = z.object({
   days: z.array(timelineDaySchema)
 });
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>;
+
+export const playbookDayStepSchema = z.object({
+  entry: entryDtoSchema,
+  reactions: z.array(publicReactionDtoSchema),
+  confidenceScore: z.number().int().min(0).max(100)
+});
+export type PlaybookDayStep = z.infer<typeof playbookDayStepSchema>;
+
+export const playbookDaySchema = z.object({
+  date: z.string().date(),
+  summary: daySummaryDtoSchema.nullable(),
+  steps: z.array(playbookDayStepSchema)
+});
+export type PlaybookDay = z.infer<typeof playbookDaySchema>;
+
+export const playbookResponseSchema = z.object({
+  waybook: waybookDtoSchema,
+  days: z.array(playbookDaySchema)
+});
+export type PlaybookResponse = z.infer<typeof playbookResponseSchema>;
 
 export const createShareLinkResponseSchema = z.object({
   id: idSchema,

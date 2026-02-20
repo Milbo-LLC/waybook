@@ -1,11 +1,21 @@
 import type {
+  AckPromptInput,
+  CreatePublicReactionInput,
   CreateEntryInput,
   CreateUploadUrlInput,
   CreateWaybookInput,
+  DaySummaryDTO,
   EntryDTO,
+  EntryGuidanceDTO,
+  EntryRatingDTO,
   ListEntriesResponse,
   ListWaybooksResponse,
+  PlaybookResponse,
+  PromptDTO,
   TimelineResponse,
+  UpsertDaySummaryInput,
+  UpsertEntryGuidanceInput,
+  UpsertEntryRatingInput,
   UpdateEntryInput,
   UpdateWaybookInput,
   WaybookDTO
@@ -109,5 +119,55 @@ export class WaybookApiClient {
 
   getTimeline(waybookId: string) {
     return this.request<TimelineResponse>(`/v1/waybooks/${waybookId}/timeline`);
+  }
+
+  createEntryRating(entryId: string, input: UpsertEntryRatingInput) {
+    return this.request<EntryRatingDTO>(`/v1/entries/${entryId}/rating`, { method: "POST", body: input });
+  }
+
+  updateEntryRating(entryId: string, input: UpsertEntryRatingInput) {
+    return this.request<EntryRatingDTO>(`/v1/entries/${entryId}/rating`, { method: "PATCH", body: input });
+  }
+
+  listDaySummaries(waybookId: string) {
+    return this.request<{ items: DaySummaryDTO[] }>(`/v1/waybooks/${waybookId}/day-summaries`);
+  }
+
+  createDaySummary(waybookId: string, input: UpsertDaySummaryInput) {
+    return this.request<DaySummaryDTO>(`/v1/waybooks/${waybookId}/day-summaries`, { method: "POST", body: input });
+  }
+
+  updateDaySummary(waybookId: string, date: string, input: Omit<UpsertDaySummaryInput, "summaryDate">) {
+    return this.request<DaySummaryDTO>(`/v1/waybooks/${waybookId}/day-summaries/${date}`, {
+      method: "PATCH",
+      body: input
+    });
+  }
+
+  createEntryGuidance(entryId: string, input: UpsertEntryGuidanceInput) {
+    return this.request<EntryGuidanceDTO>(`/v1/entries/${entryId}/guidance`, { method: "POST", body: input });
+  }
+
+  updateEntryGuidance(entryId: string, input: UpsertEntryGuidanceInput) {
+    return this.request<EntryGuidanceDTO>(`/v1/entries/${entryId}/guidance`, { method: "PATCH", body: input });
+  }
+
+  getPublicPlaybook(publicSlug: string) {
+    return this.request<PlaybookResponse>(`/v1/public/w/${publicSlug}/playbook`);
+  }
+
+  createPublicReaction(entryId: string, input: CreatePublicReactionInput) {
+    return this.request<{ success: true }>(`/v1/public/entries/${entryId}/reactions`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  getNextPrompt() {
+    return this.request<PromptDTO | null>("/v1/prompts/next");
+  }
+
+  acknowledgePrompt(input: AckPromptInput) {
+    return this.request<{ success: true }>(`/v1/prompts/ack`, { method: "POST", body: input });
   }
 }

@@ -13,13 +13,17 @@ import type { AppBindings } from "../types.js";
 
 const allowedByType: Record<string, string[]> = {
   photo: ["image/jpeg", "image/png", "image/webp", "image/heic"],
-  audio: ["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-m4a"]
+  audio: ["audio/mpeg", "audio/mp4", "audio/wav", "audio/x-m4a"],
+  video: ["video/mp4", "video/quicktime", "video/webm"]
 };
 
 const maxBytesByType: Record<string, number> = {
   photo: 20 * 1024 * 1024,
-  audio: 100 * 1024 * 1024
+  audio: 100 * 1024 * 1024,
+  video: 120 * 1024 * 1024
 };
+
+const maxVideoDurationMs = 60_000;
 
 export const mediaRoutes = new Hono<AppBindings>();
 
@@ -45,6 +49,10 @@ mediaRoutes.post(
 
     if (payload.bytes > maxBytes) {
       return c.json({ error: "file_too_large" }, 400);
+    }
+
+    if (payload.type === "video" && payload.durationMs && payload.durationMs > maxVideoDurationMs) {
+      return c.json({ error: "video_too_long", maxDurationMs: maxVideoDurationMs }, 400);
     }
 
     const [entry] = await db
@@ -76,6 +84,8 @@ mediaRoutes.post(
         status: "pending_upload",
         mimeType: payload.mimeType,
         bytes: payload.bytes,
+        durationMs: payload.durationMs ?? null,
+        transcodeStatus: payload.type === "video" ? "pending" : "none",
         storageKeyOriginal: storageKey
       })
       .returning();
@@ -154,6 +164,10 @@ mediaRoutes.get("/media/:mediaId", requireAuthMiddleware, async (c) => {
       width: schema.mediaAssets.width,
       height: schema.mediaAssets.height,
       durationMs: schema.mediaAssets.durationMs,
+      thumbnailKey: schema.mediaAssets.thumbnailKey,
+      transcodeStatus: schema.mediaAssets.transcodeStatus,
+      playbackDurationMs: schema.mediaAssets.playbackDurationMs,
+      aspectRatio: schema.mediaAssets.aspectRatio,
       storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
       storageKeyDisplay: schema.mediaAssets.storageKeyDisplay,
       createdAt: schema.mediaAssets.createdAt,

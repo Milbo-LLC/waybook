@@ -25,7 +25,8 @@ const worker = new Worker<{ mediaId: string }>(
     const [current] = await db
       .select({
         id: schema.mediaAssets.id,
-        storageKeyOriginal: schema.mediaAssets.storageKeyOriginal
+        storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
+        type: schema.mediaAssets.type
       })
       .from(schema.mediaAssets)
       .where(eq(schema.mediaAssets.id, mediaId))
@@ -34,12 +35,16 @@ const worker = new Worker<{ mediaId: string }>(
     if (!current) throw new Error(`media asset not found: ${mediaId}`);
 
     const displayKey = current.storageKeyOriginal.replace("/original", "/display");
+    const thumbnailKey =
+      current.type === "video" ? current.storageKeyOriginal.replace("/original", "/thumbnail.jpg") : null;
 
     await db
       .update(schema.mediaAssets)
       .set({
         status: "ready",
-        storageKeyDisplay: displayKey
+        storageKeyDisplay: displayKey,
+        thumbnailKey,
+        transcodeStatus: current.type === "video" ? "ready" : "none"
       })
       .where(eq(schema.mediaAssets.id, mediaId));
 
@@ -60,7 +65,10 @@ worker.on("failed", async (job, error) => {
   if (job?.data.mediaId) {
     await db
       .update(schema.mediaAssets)
-      .set({ status: "failed" })
+      .set({
+        status: "failed",
+        transcodeStatus: "failed"
+      })
       .where(eq(schema.mediaAssets.id, job.data.mediaId));
 
     await db.insert(schema.jobEvents).values({

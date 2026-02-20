@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cursorPageSchema, idSchema, isoDateTimeSchema, optionalLocationSchema } from "./common.js";
+import { entryGuidanceDtoSchema, entryRatingDtoSchema } from "./experience.js";
 import { mediaDtoSchema } from "./media.js";
 
 export const entryDtoSchema = z.object({
@@ -10,6 +11,8 @@ export const entryDtoSchema = z.object({
   textContent: z.string().max(5000).nullable(),
   location: optionalLocationSchema,
   media: z.array(mediaDtoSchema),
+  rating: entryRatingDtoSchema.nullable(),
+  guidance: entryGuidanceDtoSchema.nullable(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema
 });

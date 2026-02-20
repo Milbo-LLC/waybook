@@ -18,9 +18,18 @@ import { sql } from "drizzle-orm";
 const now = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 export const waybookVisibilityEnum = pgEnum("waybook_visibility", ["private", "link_only", "public"]);
-export const mediaTypeEnum = pgEnum("media_type", ["photo", "audio"]);
+export const mediaTypeEnum = pgEnum("media_type", ["photo", "audio", "video"]);
 export const mediaStatusEnum = pgEnum("media_status", ["pending_upload", "uploaded", "processing", "ready", "failed"]);
 export const itineraryTypeEnum = pgEnum("itinerary_type", ["hotel", "restaurant", "attraction", "activity"]);
+export const mediaTranscodeStatusEnum = pgEnum("media_transcode_status", ["none", "pending", "processing", "ready", "failed"]);
+export const reactionTypeEnum = pgEnum("reaction_type", [
+  "worth_it",
+  "skip_it",
+  "family_friendly",
+  "budget_friendly",
+  "photogenic"
+]);
+export const promptTypeEnum = pgEnum("prompt_type", ["itinerary_gap", "location_gap", "day_reflection"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -146,6 +155,10 @@ export const mediaAssets = pgTable(
     width: integer("width"),
     height: integer("height"),
     durationMs: integer("duration_ms"),
+    thumbnailKey: text("thumbnail_key"),
+    transcodeStatus: mediaTranscodeStatusEnum("transcode_status").notNull().default("none"),
+    playbackDurationMs: integer("playback_duration_ms"),
+    aspectRatio: doublePrecision("aspect_ratio"),
     status: mediaStatusEnum("status").notNull().default("pending_upload"),
     metadata: jsonb("metadata"),
     createdAt: now()
@@ -204,4 +217,108 @@ export const jobEvents = pgTable(
     createdAt: now()
   },
   (table) => [index("job_events_queue_created_idx").on(table.queue, table.createdAt)]
+);
+
+export const entryExperienceRatings = pgTable(
+  "entry_experience_ratings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => entries.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ratingOverall: integer("rating_overall").notNull(),
+    valueForMoney: integer("value_for_money").notNull(),
+    wouldRepeat: boolean("would_repeat").notNull(),
+    difficulty: integer("difficulty"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("entry_experience_ratings_entry_user_unique").on(table.entryId, table.userId),
+    index("entry_experience_ratings_entry_created_idx").on(table.entryId, table.createdAt)
+  ]
+);
+
+export const waybookDaySummaries = pgTable(
+  "waybook_day_summaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    summaryDate: date("summary_date").notNull(),
+    summaryText: text("summary_text"),
+    topMomentEntryId: uuid("top_moment_entry_id").references(() => entries.id, { onDelete: "set null" }),
+    moodScore: integer("mood_score"),
+    energyScore: integer("energy_score"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("waybook_day_summaries_waybook_date_unique").on(table.waybookId, table.summaryDate),
+    index("waybook_day_summaries_waybook_date_idx").on(table.waybookId, table.summaryDate)
+  ]
+);
+
+export const entryGuidance = pgTable(
+  "entry_guidance",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => entries.id, { onDelete: "cascade" }),
+    isMustDo: boolean("is_must_do").notNull().default(false),
+    estimatedCostMin: integer("estimated_cost_min"),
+    estimatedCostMax: integer("estimated_cost_max"),
+    timeNeededMinutes: integer("time_needed_minutes"),
+    bestTimeOfDay: varchar("best_time_of_day", { length: 80 }),
+    tipsText: text("tips_text"),
+    accessibilityNotes: text("accessibility_notes"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [uniqueIndex("entry_guidance_entry_unique").on(table.entryId)]
+);
+
+export const entryReactionsPublic = pgTable(
+  "entry_reactions_public",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => entries.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userFingerprint: varchar("user_fingerprint", { length: 160 }),
+    reactionType: reactionTypeEnum("reaction_type").notNull(),
+    note: text("note"),
+    createdAt: now()
+  },
+  (table) => [index("entry_reactions_public_entry_created_idx").on(table.entryId, table.createdAt)]
+);
+
+export const promptEvents = pgTable(
+  "prompt_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    promptType: promptTypeEnum("prompt_type").notNull(),
+    triggerReason: varchar("trigger_reason", { length: 120 }).notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    shownAt: timestamp("shown_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    actedAt: timestamp("acted_at", { withTimezone: true }),
+    createdAt: now()
+  },
+  (table) => [
+    index("prompt_events_user_scheduled_idx").on(table.userId, table.scheduledFor),
+    index("prompt_events_waybook_scheduled_idx").on(table.waybookId, table.scheduledFor)
+  ]
 );

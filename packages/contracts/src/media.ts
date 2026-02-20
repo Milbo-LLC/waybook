@@ -12,6 +12,10 @@ export const mediaDtoSchema = z.object({
   width: z.number().int().nonnegative().nullable(),
   height: z.number().int().nonnegative().nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
+  thumbnailUrl: z.string().url().nullable(),
+  transcodeStatus: z.enum(["none", "pending", "processing", "ready", "failed"]).default("none"),
+  playbackDurationMs: z.number().int().nonnegative().nullable(),
+  aspectRatio: z.number().positive().nullable(),
   originalUrl: z.string().url().nullable(),
   displayUrl: z.string().url().nullable(),
   createdAt: isoDateTimeSchema
@@ -22,6 +26,7 @@ export const createUploadUrlInputSchema = z.object({
   type: mediaTypeSchema,
   mimeType: z.string().min(1),
   bytes: z.number().int().positive(),
+  durationMs: z.number().int().positive().optional(),
   fileName: z.string().min(1),
   idempotencyKey: z.string().min(8).max(128)
 });
