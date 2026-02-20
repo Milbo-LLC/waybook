@@ -158,7 +158,7 @@ export default function WaybookDetailPage() {
           </button>
         </div>
       </section>
-      {firstEntry ? <UploadPanel entryId={firstEntry.id} /> : null}
+      {firstEntry ? <UploadPanel entryId={firstEntry.id} onUploaded={loadWaybook} /> : null}
 
       <section>
         <h2 className="mb-3 text-xl font-semibold">Entries</h2>

@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { apiClient } from "@/lib/api";
 
-export const UploadPanel = ({ entryId }: { entryId: string }) => {
+export const UploadPanel = ({
+  entryId,
+  onUploaded
+}: {
+  entryId: string;
+  onUploaded?: () => Promise<void> | void;
+}) => {
   const [status, setStatus] = useState<string | null>(null);
 
   return (
@@ -44,6 +50,7 @@ export const UploadPanel = ({ entryId }: { entryId: string }) => {
 
             await apiClient.completeUpload(upload.mediaId, crypto.randomUUID());
             setStatus("Uploaded and queued for processing");
+            await onUploaded?.();
           } catch (err) {
             const message = err instanceof Error ? err.message : "Upload failed";
             setStatus(`Upload error: ${message}`);

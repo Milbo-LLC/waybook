@@ -30,6 +30,39 @@ export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefre
               {entry.location.placeName ?? "Pinned location"} ({entry.location.lat.toFixed(4)}, {entry.location.lng.toFixed(4)})
             </p>
           ) : null}
+          {entry.media.length ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {entry.media.map((media) => {
+                const url = media.displayUrl ?? media.originalUrl;
+                if (!url) return null;
+
+                if (media.type === "photo") {
+                  return (
+                    <img
+                      key={media.id}
+                      alt="Waybook media"
+                      className="h-44 w-full rounded border border-slate-200 object-cover"
+                      src={url}
+                    />
+                  );
+                }
+
+                if (media.type === "video") {
+                  return (
+                    <video
+                      key={media.id}
+                      className="h-44 w-full rounded border border-slate-200 object-cover"
+                      controls
+                      poster={media.thumbnailUrl ?? undefined}
+                      src={url}
+                    />
+                  );
+                }
+
+                return <audio key={media.id} className="w-full" controls src={url} />;
+              })}
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               className="rounded border px-2 py-1 text-xs"
