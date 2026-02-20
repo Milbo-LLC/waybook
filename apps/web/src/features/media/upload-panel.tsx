@@ -17,28 +17,37 @@ export const UploadPanel = ({ entryId }: { entryId: string }) => {
           const file = event.target.files?.[0];
           if (!file) return;
 
-          const isVideo = file.type.startsWith("video/");
-          const type = isVideo ? "video" : "photo";
+          try {
+            const isVideo = file.type.startsWith("video/");
+            const type = isVideo ? "video" : "photo";
 
-          setStatus("Requesting upload URL...");
-          const upload = await apiClient.createUploadUrl(entryId, {
-            type,
-            mimeType: file.type,
-            bytes: file.size,
-            durationMs: undefined,
-            fileName: file.name,
-            idempotencyKey: crypto.randomUUID()
-          });
+            setStatus("Requesting upload URL...");
+            const upload = await apiClient.createUploadUrl(entryId, {
+              type,
+              mimeType: file.type,
+              bytes: file.size,
+              durationMs: undefined,
+              fileName: file.name,
+              idempotencyKey: crypto.randomUUID()
+            });
 
-          setStatus("Uploading...");
-          await fetch(upload.uploadUrl, {
-            method: "PUT",
-            headers: upload.requiredHeaders,
-            body: file
-          });
+            setStatus("Uploading...");
+            const uploadResponse = await fetch(upload.uploadUrl, {
+              method: "PUT",
+              headers: upload.requiredHeaders,
+              body: file
+            });
 
-          await apiClient.completeUpload(upload.mediaId, crypto.randomUUID());
-          setStatus("Uploaded and queued for processing");
+            if (!uploadResponse.ok) {
+              throw new Error(`Upload failed with status ${uploadResponse.status}`);
+            }
+
+            await apiClient.completeUpload(upload.mediaId, crypto.randomUUID());
+            setStatus("Uploaded and queued for processing");
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "Upload failed";
+            setStatus(`Upload error: ${message}`);
+          }
         }}
       />
       {status ? <p className="mt-2 text-xs text-slate-500">{status}</p> : null}
