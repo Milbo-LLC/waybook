@@ -3,7 +3,12 @@
 import { Card } from "@waybook/ui";
 import type { EntryDTO } from "@waybook/contracts";
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
+
+const looksLikeHtml = (value: string) => /<([a-z][a-z0-9]*)\b[^>]*>/i.test(value);
 
 export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefresh?: () => Promise<void> | void }) => {
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null);
@@ -77,10 +82,18 @@ export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefre
           <Card key={entry.id}>
             <p className="text-sm text-slate-500">{new Date(entry.capturedAt).toLocaleString()}</p>
             {entry.textContent ? (
-              <div
-                className="prose prose-slate mt-2 max-w-none text-sm"
-                dangerouslySetInnerHTML={{ __html: entry.textContent }}
-              />
+              looksLikeHtml(entry.textContent) ? (
+                <div
+                  className="prose prose-slate mt-2 max-w-none text-sm"
+                  dangerouslySetInnerHTML={{ __html: entry.textContent }}
+                />
+              ) : (
+                <div className="prose prose-slate mt-2 max-w-none text-sm">
+                  <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
+                    {entry.textContent}
+                  </ReactMarkdown>
+                </div>
+              )
             ) : null}
             {entry.rating ? (
               <p className="mt-2 text-xs text-slate-600">
