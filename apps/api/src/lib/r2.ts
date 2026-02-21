@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env.js";
 
@@ -39,4 +39,14 @@ export const toPublicMediaUrl = (key: string | null): string | null => {
   if (!key) return null;
   const base = env.R2_PUBLIC_BASE_URL.replace(/\/$/, "");
   return `${base}/${key}`;
+};
+
+export const deleteObjectIfExists = async (key: string | null) => {
+  if (!key) return;
+  await r2Client.send(
+    new DeleteObjectCommand({
+      Bucket: env.R2_BUCKET,
+      Key: key
+    })
+  );
 };

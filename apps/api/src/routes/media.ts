@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { claimIdempotencyKey } from "../lib/idempotency.js";
 import { mapMedia } from "../lib/mappers.js";
 import { mediaProcessingQueue } from "../lib/queue.js";
-import { createUploadUrl } from "../lib/r2.js";
+import { createUploadUrl, deleteObjectIfExists } from "../lib/r2.js";
 import { requireAuthMiddleware } from "../middleware/require-auth.js";
 import type { AppBindings } from "../types.js";
 
@@ -182,4 +182,35 @@ mediaRoutes.get("/media/:mediaId", requireAuthMiddleware, async (c) => {
   if (!row) return c.json({ error: "not_found" }, 404);
 
   return c.json(mapMedia(row));
+});
+
+mediaRoutes.delete("/media/:mediaId", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const mediaId = c.req.param("mediaId");
+
+  const [row] = await db
+    .select({
+      id: schema.mediaAssets.id,
+      storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
+      storageKeyDisplay: schema.mediaAssets.storageKeyDisplay,
+      thumbnailKey: schema.mediaAssets.thumbnailKey
+    })
+    .from(schema.mediaAssets)
+    .innerJoin(schema.entries, eq(schema.mediaAssets.entryId, schema.entries.id))
+    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
+    .where(and(eq(schema.mediaAssets.id, mediaId), eq(schema.waybooks.userId, user.id)))
+    .limit(1);
+
+  if (!row) return c.json({ error: "not_found" }, 404);
+
+  await db.delete(schema.mediaAssets).where(eq(schema.mediaAssets.id, mediaId));
+
+  await Promise.allSettled([
+    deleteObjectIfExists(row.storageKeyOriginal),
+    deleteObjectIfExists(row.storageKeyDisplay),
+    deleteObjectIfExists(row.thumbnailKey)
+  ]);
+
+  return c.json({ success: true });
 });

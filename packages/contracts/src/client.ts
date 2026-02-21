@@ -117,6 +117,12 @@ export class WaybookApiClient {
     });
   }
 
+  deleteMedia(mediaId: string) {
+    return this.request<{ success: true }>(`/v1/media/${mediaId}`, {
+      method: "DELETE"
+    });
+  }
+
   getTimeline(waybookId: string) {
     return this.request<TimelineResponse>(`/v1/waybooks/${waybookId}/timeline`);
   }
