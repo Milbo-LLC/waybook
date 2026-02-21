@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
 import { PageShell } from "@/components/page-shell";
 import { EntryList } from "@/features/entries/entry-list";
 import { ShareLinkCard } from "@/features/share/share-link-card";
@@ -26,8 +29,20 @@ export default function WaybookDetailPage() {
   const [summaryText, setSummaryText] = useState("");
   const [savingSummary, setSavingSummary] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const editorRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const editor = useEditor({
+    extensions: [StarterKit, Placeholder.configure({ placeholder: "What happened? What made this memorable?" })],
+    content: "",
+    editorProps: {
+      attributes: {
+        class:
+          "prose prose-slate min-h-[140px] max-w-none rounded border border-slate-300 bg-white p-3 text-sm focus:outline-none"
+      }
+    },
+    onUpdate({ editor }) {
+      setCaptureHtml(editor.getHTML());
+    }
+  });
 
   const loadWaybook = async () => {
     if (!waybookId) return;
@@ -72,7 +87,7 @@ export default function WaybookDetailPage() {
 
   const todayDate = new Date().toISOString().slice(0, 10);
   const todaySummary = timeline?.days.find((day) => day.date === todayDate)?.summary ?? null;
-  const captureText = captureHtml.replace(/<[^>]+>/g, " ").trim();
+  const captureText = editor?.getText().trim() ?? "";
   const hasCaptureText = Boolean(captureText);
   const canSaveCapture = hasCaptureText || selectedFiles.length > 0;
 
@@ -125,11 +140,7 @@ export default function WaybookDetailPage() {
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript ?? "";
       if (transcript) {
-        if (editorRef.current) {
-          editorRef.current.focus();
-        }
-        document.execCommand("insertText", false, `${transcript} `);
-        setCaptureHtml(editorRef.current?.innerHTML ?? "");
+        editor?.chain().focus().insertContent(`${transcript} `).run();
       }
     };
 
@@ -170,33 +181,21 @@ export default function WaybookDetailPage() {
           <div className="mb-2 flex flex-wrap gap-2">
             <button
               className="rounded border bg-white px-2 py-1 text-xs"
-              onClick={() => {
-                editorRef.current?.focus();
-                document.execCommand("bold");
-                setCaptureHtml(editorRef.current?.innerHTML ?? "");
-              }}
+              onClick={() => editor?.chain().focus().toggleBold().run()}
               type="button"
             >
               Bold
             </button>
             <button
               className="rounded border bg-white px-2 py-1 text-xs"
-              onClick={() => {
-                editorRef.current?.focus();
-                document.execCommand("italic");
-                setCaptureHtml(editorRef.current?.innerHTML ?? "");
-              }}
+              onClick={() => editor?.chain().focus().toggleItalic().run()}
               type="button"
             >
               Italic
             </button>
             <button
               className="rounded border bg-white px-2 py-1 text-xs"
-              onClick={() => {
-                editorRef.current?.focus();
-                document.execCommand("insertUnorderedList");
-                setCaptureHtml(editorRef.current?.innerHTML ?? "");
-              }}
+              onClick={() => editor?.chain().focus().toggleBulletList().run()}
               type="button"
             >
               Bullets
@@ -209,13 +208,7 @@ export default function WaybookDetailPage() {
               {isDictating ? "Stop speaking" : "Speak to write"}
             </button>
           </div>
-          <div
-            ref={editorRef}
-            className="prose prose-slate min-h-[140px] max-w-none rounded border border-slate-300 bg-white p-3 text-sm focus:outline-none"
-            contentEditable
-            onInput={(event) => setCaptureHtml(event.currentTarget.innerHTML)}
-            suppressContentEditableWarning
-          />
+          <EditorContent editor={editor} />
         </div>
         <div className="mt-3">
           <label className="text-sm font-medium">Add photos/videos</label>
@@ -261,9 +254,7 @@ export default function WaybookDetailPage() {
                 }
 
                 setCaptureHtml("");
-                if (editorRef.current) {
-                  editorRef.current.innerHTML = "";
-                }
+                editor?.commands.clearContent();
                 setSelectedFiles([]);
                 if (fileInputRef.current) {
                   fileInputRef.current.value = "";
