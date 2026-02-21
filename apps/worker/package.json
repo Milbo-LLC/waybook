@@ -12,11 +12,13 @@
     "test": "echo 'no tests configured for @waybook/worker'"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.883.0",
     "@waybook/db": "workspace:*",
     "bullmq": "^5.40.3",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.44.5",
     "ioredis": "5.9.2",
+    "sharp": "^0.34.4",
     "zod": "^3.24.2"
   },
   "devDependencies": {

@@ -1,8 +1,10 @@
 import { Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
 import IORedis from "ioredis";
+import sharp from "sharp";
 import { createDb, schema } from "@waybook/db";
 import { env } from "./env.js";
+import { getObjectBuffer, putObjectBuffer } from "./r2.js";
 
 const redis = new IORedis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -26,7 +28,8 @@ const worker = new Worker<{ mediaId: string }>(
       .select({
         id: schema.mediaAssets.id,
         storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
-        type: schema.mediaAssets.type
+        type: schema.mediaAssets.type,
+        mimeType: schema.mediaAssets.mimeType
       })
       .from(schema.mediaAssets)
       .where(eq(schema.mediaAssets.id, mediaId))
@@ -34,9 +37,38 @@ const worker = new Worker<{ mediaId: string }>(
 
     if (!current) throw new Error(`media asset not found: ${mediaId}`);
 
-    const displayKey = current.storageKeyOriginal.replace("/original", "/display");
-    const thumbnailKey =
-      current.type === "video" ? current.storageKeyOriginal.replace("/original", "/thumbnail.jpg") : null;
+    let displayKey: string | null = null;
+    let thumbnailKey: string | null = null;
+    let width: number | null = null;
+    let height: number | null = null;
+    let aspectRatio: number | null = null;
+    let transcodeStatus: "none" | "pending" | "processing" | "ready" | "failed" = "none";
+
+    if (current.type === "photo") {
+      const source = await getObjectBuffer(current.storageKeyOriginal);
+      const transformed = sharp(source).rotate();
+      const metadata = await transformed.metadata();
+      const output = await transformed.webp({ quality: 85 }).toBuffer();
+
+      displayKey = current.storageKeyOriginal.replace(/\/original(\.[^/]+)?$/, "/display.webp");
+      await putObjectBuffer({
+        key: displayKey,
+        body: output,
+        contentType: "image/webp"
+      });
+
+      width = metadata.width ?? null;
+      height = metadata.height ?? null;
+      aspectRatio = width && height ? width / height : null;
+      transcodeStatus = "ready";
+    } else if (current.type === "video") {
+      displayKey = null;
+      thumbnailKey = current.storageKeyOriginal.replace(/\/original(\.[^/]+)?$/, "/thumbnail.jpg");
+      transcodeStatus = "ready";
+    } else if (current.type === "audio") {
+      displayKey = null;
+      transcodeStatus = "none";
+    }
 
     await db
       .update(schema.mediaAssets)
@@ -44,7 +76,10 @@ const worker = new Worker<{ mediaId: string }>(
         status: "ready",
         storageKeyDisplay: displayKey,
         thumbnailKey,
-        transcodeStatus: current.type === "video" ? "ready" : "none"
+        width,
+        height,
+        aspectRatio,
+        transcodeStatus
       })
       .where(eq(schema.mediaAssets.id, mediaId));
 
