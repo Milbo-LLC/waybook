@@ -76,7 +76,12 @@ export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefre
         {entries.map((entry) => (
           <Card key={entry.id}>
             <p className="text-sm text-slate-500">{new Date(entry.capturedAt).toLocaleString()}</p>
-            {entry.textContent ? <p className="mt-2 text-sm">{entry.textContent}</p> : null}
+            {entry.textContent ? (
+              <div
+                className="prose prose-slate mt-2 max-w-none text-sm"
+                dangerouslySetInnerHTML={{ __html: entry.textContent }}
+              />
+            ) : null}
             {entry.rating ? (
               <p className="mt-2 text-xs text-slate-600">
                 Rating: {entry.rating.ratingOverall}/5, value {entry.rating.valueForMoney}/5, would repeat{" "}
