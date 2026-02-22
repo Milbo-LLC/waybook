@@ -88,11 +88,11 @@ export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefre
             {entry.textContent ? (
               looksLikeTiptapHtml(entry.textContent) ? (
                 <div
-                  className="prose prose-slate mt-2 max-w-none text-sm"
+                  className="prose prose-slate prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-ul:list-disc prose-ol:list-decimal prose-li:marker:text-slate-500 mt-2 max-w-none text-sm"
                   dangerouslySetInnerHTML={{ __html: entry.textContent }}
                 />
               ) : (
-                <div className="prose prose-slate mt-2 max-w-none text-sm">
+                <div className="prose prose-slate prose-headings:font-semibold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-ul:list-disc prose-ol:list-decimal prose-li:marker:text-slate-500 mt-2 max-w-none text-sm">
                   <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
                     {entry.textContent}
                   </ReactMarkdown>

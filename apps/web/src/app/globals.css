@@ -9,3 +9,25 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+@layer components {
+  .ProseMirror h1 {
+    @apply mt-6 text-3xl font-semibold;
+  }
+
+  .ProseMirror h2 {
+    @apply mt-5 text-2xl font-semibold;
+  }
+
+  .ProseMirror h3 {
+    @apply mt-4 text-xl font-semibold;
+  }
+
+  .ProseMirror ul {
+    @apply list-disc pl-6;
+  }
+
+  .ProseMirror ol {
+    @apply list-decimal pl-6;
+  }
+}
