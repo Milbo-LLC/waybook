@@ -103,6 +103,11 @@ export default function WaybookDetailPage() {
     if (!waybookId) return;
 
     const run = async () => {
+      setLoading(true);
+      setError(null);
+      setTimeline(null);
+      setEntries([]);
+
       const session = await getSession();
       if (!session) {
         router.replace("/login" as any);
@@ -112,7 +117,16 @@ export default function WaybookDetailPage() {
       try {
         await loadWaybook();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load waybook");
+        const message = err instanceof Error ? err.message : "Unable to load waybook";
+        if (message.includes("API 401")) {
+          router.replace("/login" as any);
+          return;
+        }
+        if (message.includes("API 404")) {
+          router.replace("/");
+          return;
+        }
+        setError(message);
       } finally {
         setLoading(false);
       }
@@ -299,6 +313,26 @@ export default function WaybookDetailPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <PageShell>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
+        </div>
+      </PageShell>
+    );
+  }
+
+  if (!timeline) {
+    return (
+      <PageShell>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error ?? "Unable to load this trip."}
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
       <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
@@ -373,7 +407,6 @@ export default function WaybookDetailPage() {
         </div>
       </header>
 
-      {loading ? <p className="text-sm text-slate-500">Loading...</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {activeTab === "capture" ? (
