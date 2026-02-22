@@ -38,6 +38,9 @@ const envSchema = z.object({
   R2_PUBLIC_BASE_URL: z.string().url().default("https://media.example.com"),
   R2_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   API_BASE_URL: z.string().url().default("http://localhost:8787"),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  INVITE_EMAIL_FROM: z.string().email().optional(),
+  INVITE_EMAIL_REPLY_TO: z.string().email().optional(),
   RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120)
 });

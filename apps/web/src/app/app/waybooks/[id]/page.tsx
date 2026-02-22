@@ -65,6 +65,7 @@ export default function WaybookDetailPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [memberActionId, setMemberActionId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -619,7 +620,56 @@ export default function WaybookDetailPage() {
               {membersData.members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between rounded border p-2 text-sm">
                   <span>{member.user.name || member.user.email || member.userId}</span>
-                  <span className="text-xs text-slate-500">{member.role}</span>
+                  <div className="flex items-center gap-2">
+                    {canManageTrip && member.role !== "owner" ? (
+                      <select
+                        className="rounded border px-2 py-1 text-xs"
+                        disabled={memberActionId === member.id}
+                        onChange={async (event) => {
+                          const role = event.target.value as "editor" | "viewer";
+                          setMemberActionId(member.id);
+                          setInviteStatus("Updating role...");
+                          try {
+                            await apiClient.updateWaybookMemberRole(waybookId, member.id, { role });
+                            await loadWaybook();
+                            setInviteStatus("Role updated.");
+                          } catch (err) {
+                            setInviteStatus(err instanceof Error ? err.message : "Unable to update role.");
+                          } finally {
+                            setMemberActionId(null);
+                          }
+                        }}
+                        value={member.role}
+                      >
+                        <option value="editor">editor</option>
+                        <option value="viewer">viewer</option>
+                      </select>
+                    ) : (
+                      <span className="text-xs text-slate-500">{member.role}</span>
+                    )}
+                    {canManageTrip && member.role !== "owner" ? (
+                      <button
+                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600"
+                        disabled={memberActionId === member.id}
+                        onClick={async () => {
+                          setMemberActionId(member.id);
+                          setInviteStatus("Removing member...");
+                          try {
+                            await apiClient.removeWaybookMember(waybookId, member.id);
+                            await loadWaybook();
+                            setInviteStatus("Member removed.");
+                          } catch (err) {
+                            setInviteStatus(err instanceof Error ? err.message : "Unable to remove member.");
+                          } finally {
+                            setMemberActionId(null);
+                          }
+                        }}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -629,10 +679,56 @@ export default function WaybookDetailPage() {
               {membersData.invites.map((invite) => (
                 <div key={invite.id} className="flex items-center justify-between rounded border border-dashed p-2 text-sm">
                   <span>{invite.email}</span>
-                  <span className="text-xs text-slate-500">
-                    invited as {invite.role}
-                    {invite.expiresAt ? `, expires ${new Date(invite.expiresAt).toLocaleDateString()}` : ""}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">
+                      invited as {invite.role}
+                      {invite.expiresAt ? `, expires ${new Date(invite.expiresAt).toLocaleDateString()}` : ""}
+                    </span>
+                    {canManageTrip ? (
+                      <>
+                        <button
+                          className="rounded border px-2 py-1 text-xs"
+                          disabled={memberActionId === invite.id}
+                          onClick={async () => {
+                            setMemberActionId(invite.id);
+                            setInviteStatus("Resending invite...");
+                            try {
+                              await apiClient.resendWaybookInvite(waybookId, invite.id);
+                              await loadWaybook();
+                              setInviteStatus("Invite resent.");
+                            } catch (err) {
+                              setInviteStatus(err instanceof Error ? err.message : "Unable to resend invite.");
+                            } finally {
+                              setMemberActionId(null);
+                            }
+                          }}
+                          type="button"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          className="rounded border border-red-200 px-2 py-1 text-xs text-red-600"
+                          disabled={memberActionId === invite.id}
+                          onClick={async () => {
+                            setMemberActionId(invite.id);
+                            setInviteStatus("Revoking invite...");
+                            try {
+                              await apiClient.revokeWaybookInvite(waybookId, invite.id);
+                              await loadWaybook();
+                              setInviteStatus("Invite revoked.");
+                            } catch (err) {
+                              setInviteStatus(err instanceof Error ? err.message : "Unable to revoke invite.");
+                            } finally {
+                              setMemberActionId(null);
+                            }
+                          }}
+                          type="button"
+                        >
+                          Revoke
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>

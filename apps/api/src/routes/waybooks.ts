@@ -15,6 +15,8 @@ import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getWaybookAccess, hasMinimumRole } from "../lib/access.js";
+import { sendInviteEmail } from "../lib/email.js";
+import { env } from "../lib/env.js";
 import { mapDaySummary, mapEntry, mapEntryGuidance, mapEntryRating, mapMedia, mapPublicReaction, mapWaybook } from "../lib/mappers.js";
 import { createPublicSlug, createShareToken, hashToken } from "../lib/security.js";
 import { optionalAuthMiddleware, requireAuthMiddleware } from "../middleware/require-auth.js";
@@ -349,34 +351,55 @@ waybookRoutes.post(
       if (existingMember) return c.json({ error: "already_member" }, 409);
     }
 
+    const [existingInvite] = await db
+      .select()
+      .from(schema.waybookInvites)
+      .where(and(eq(schema.waybookInvites.waybookId, waybookId), eq(schema.waybookInvites.email, email), isNull(schema.waybookInvites.acceptedAt)))
+      .limit(1);
+
     const token = createShareToken();
     const tokenHash = hashToken(token);
-
-    const [invite] = await db
-      .insert(schema.waybookInvites)
-      .values({
-        waybookId,
-        email,
-        tokenHash,
-        role: payload.role,
-        invitedBy: user.id,
-        expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null
-      })
-      .onConflictDoUpdate({
-        target: [schema.waybookInvites.tokenHash],
-        set: {
-          email,
-          role: payload.role,
-          invitedBy: user.id,
-          expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null,
-          acceptedAt: null
-        }
-      })
-      .returning();
+    const expiresAt = payload.expiresAt ? new Date(payload.expiresAt) : null;
+    const [invite] = existingInvite
+      ? await db
+          .update(schema.waybookInvites)
+          .set({
+            tokenHash,
+            role: payload.role,
+            invitedBy: user.id,
+            expiresAt,
+            acceptedAt: null
+          })
+          .where(eq(schema.waybookInvites.id, existingInvite.id))
+          .returning()
+      : await db
+          .insert(schema.waybookInvites)
+          .values({
+            waybookId,
+            email,
+            tokenHash,
+            role: payload.role,
+            invitedBy: user.id,
+            expiresAt
+          })
+          .returning();
 
     if (!invite) return c.json({ error: "create_failed" }, 500);
 
-    const acceptUrl = `${new URL(c.req.url).origin}/invite/${token}`;
+    const acceptUrl = `${new URL(`/invite/${token}`, env.CORS_ORIGIN).toString()}`;
+    const inviterName = user.email ?? "A Waybook traveler";
+    try {
+      await sendInviteEmail({
+        to: email,
+        inviterName,
+        waybookTitle: access.waybook.title,
+        acceptUrl,
+        role: payload.role
+      });
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 503);
+    }
+
     return c.json(
       {
         invite: {
@@ -396,6 +419,110 @@ waybookRoutes.post(
     );
   }
 );
+
+waybookRoutes.patch(
+  "/waybooks/:waybookId/members/:memberId",
+  requireAuthMiddleware,
+  zValidator("json", z.object({ role: z.enum(["editor", "viewer"]) })),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const memberId = c.req.param("memberId");
+    const payload = c.req.valid("json");
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+    const [member] = await db
+      .select()
+      .from(schema.waybookMembers)
+      .where(and(eq(schema.waybookMembers.id, memberId), eq(schema.waybookMembers.waybookId, waybookId)))
+      .limit(1);
+    if (!member) return c.json({ error: "not_found" }, 404);
+    if (member.userId === user.id) return c.json({ error: "cannot_change_owner_role" }, 400);
+    if (member.role === "owner") return c.json({ error: "cannot_change_owner_role" }, 400);
+
+    await db
+      .update(schema.waybookMembers)
+      .set({ role: payload.role })
+      .where(eq(schema.waybookMembers.id, memberId));
+
+    return c.json({ success: true });
+  }
+);
+
+waybookRoutes.delete("/waybooks/:waybookId/members/:memberId", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+  const memberId = c.req.param("memberId");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+  const [member] = await db
+    .select()
+    .from(schema.waybookMembers)
+    .where(and(eq(schema.waybookMembers.id, memberId), eq(schema.waybookMembers.waybookId, waybookId)))
+    .limit(1);
+  if (!member) return c.json({ error: "not_found" }, 404);
+  if (member.role === "owner" || member.userId === user.id) return c.json({ error: "cannot_remove_owner" }, 400);
+
+  await db.delete(schema.waybookMembers).where(eq(schema.waybookMembers.id, memberId));
+  return c.json({ success: true });
+});
+
+waybookRoutes.delete("/waybooks/:waybookId/invites/:inviteId", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+  const inviteId = c.req.param("inviteId");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+  await db
+    .delete(schema.waybookInvites)
+    .where(and(eq(schema.waybookInvites.id, inviteId), eq(schema.waybookInvites.waybookId, waybookId)));
+  return c.json({ success: true });
+});
+
+waybookRoutes.post("/waybooks/:waybookId/invites/:inviteId/resend", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+  const inviteId = c.req.param("inviteId");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+  const [invite] = await db
+    .select()
+    .from(schema.waybookInvites)
+    .where(and(eq(schema.waybookInvites.id, inviteId), eq(schema.waybookInvites.waybookId, waybookId), isNull(schema.waybookInvites.acceptedAt)))
+    .limit(1);
+  if (!invite) return c.json({ error: "not_found" }, 404);
+
+  const token = createShareToken();
+  const tokenHash = hashToken(token);
+  await db
+    .update(schema.waybookInvites)
+    .set({ tokenHash })
+    .where(eq(schema.waybookInvites.id, invite.id));
+
+  const acceptUrl = `${new URL(`/invite/${token}`, env.CORS_ORIGIN).toString()}`;
+  const inviterName = user.email ?? "A Waybook traveler";
+  try {
+    await sendInviteEmail({
+      to: invite.email,
+      inviterName,
+      waybookTitle: access.waybook.title,
+      acceptUrl,
+      role: invite.role === "owner" ? "editor" : invite.role
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 503);
+  }
+
+  return c.json({ success: true, acceptUrl });
+});
 
 waybookRoutes.post("/invites/:token/accept", requireAuthMiddleware, async (c) => {
   const db = c.get("db");

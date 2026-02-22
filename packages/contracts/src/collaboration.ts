@@ -55,3 +55,8 @@ export const acceptInviteResponseSchema = z.object({
   waybookId: idSchema
 });
 export type AcceptInviteResponse = z.infer<typeof acceptInviteResponseSchema>;
+
+export const updateMemberRoleInputSchema = z.object({
+  role: z.enum(["editor", "viewer"])
+});
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInputSchema>;

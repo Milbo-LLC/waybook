@@ -20,6 +20,7 @@ import type {
   UpsertDaySummaryInput,
   UpsertEntryGuidanceInput,
   UpsertEntryRatingInput,
+  UpdateMemberRoleInput,
   UpdateEntryInput,
   UpdateWaybookInput,
   WaybookDTO
@@ -96,6 +97,32 @@ export class WaybookApiClient {
 
   acceptWaybookInvite(token: string) {
     return this.request<AcceptInviteResponse>(`/v1/invites/${token}/accept`, { method: "POST", body: {} });
+  }
+
+  updateWaybookMemberRole(waybookId: string, memberId: string, input: UpdateMemberRoleInput) {
+    return this.request<{ success: true }>(`/v1/waybooks/${waybookId}/members/${memberId}`, {
+      method: "PATCH",
+      body: input
+    });
+  }
+
+  removeWaybookMember(waybookId: string, memberId: string) {
+    return this.request<{ success: true }>(`/v1/waybooks/${waybookId}/members/${memberId}`, {
+      method: "DELETE"
+    });
+  }
+
+  revokeWaybookInvite(waybookId: string, inviteId: string) {
+    return this.request<{ success: true }>(`/v1/waybooks/${waybookId}/invites/${inviteId}`, {
+      method: "DELETE"
+    });
+  }
+
+  resendWaybookInvite(waybookId: string, inviteId: string) {
+    return this.request<{ success: true; acceptUrl: string }>(`/v1/waybooks/${waybookId}/invites/${inviteId}/resend`, {
+      method: "POST",
+      body: {}
+    });
   }
 
   listEntries(waybookId: string) {

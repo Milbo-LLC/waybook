@@ -22,7 +22,9 @@ export default function LoginPage() {
             setError(null);
             setSubmitting(true);
             try {
-              await startGoogleSignIn("/auth/callback");
+              const nextPath = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+              const callbackPath = nextPath && nextPath.startsWith("/") ? nextPath : "/auth/callback";
+              await startGoogleSignIn(callbackPath);
             } catch (err) {
               setError(err instanceof Error ? err.message : "Unable to start Google sign in");
               setSubmitting(false);
