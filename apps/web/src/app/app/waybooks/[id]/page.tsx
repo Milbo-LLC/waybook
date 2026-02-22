@@ -619,7 +619,12 @@ export default function WaybookDetailPage() {
             <div className="mt-4 space-y-2">
               {membersData.members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between rounded border p-2 text-sm">
-                  <span>{member.user.name || member.user.email || member.userId}</span>
+                  <div className="flex items-center gap-2">
+                    <span>{member.user.name || member.user.email || member.userId}</span>
+                    {sessionUser?.id === member.userId ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">You</span>
+                    ) : null}
+                  </div>
                   <div className="flex items-center gap-2">
                     {canManageTrip && member.role !== "owner" ? (
                       <select

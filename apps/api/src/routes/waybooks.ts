@@ -277,6 +277,17 @@ waybookRoutes.get("/waybooks/:waybookId/members", requireAuthMiddleware, async (
   const access = await getWaybookAccess(db, waybookId, user.id);
   if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
+  // Backfill safety: ensure the waybook owner always appears as a member.
+  await db
+    .insert(schema.waybookMembers)
+    .values({
+      waybookId,
+      userId: access.waybook.userId,
+      role: "owner",
+      invitedBy: access.waybook.userId
+    })
+    .onConflictDoNothing();
+
   const members = await db
     .select({
       id: schema.waybookMembers.id,
