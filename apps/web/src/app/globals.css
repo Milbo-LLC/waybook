@@ -10,6 +10,11 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 @layer components {
   .ProseMirror h1 {
     @apply mt-6 text-3xl font-semibold;
