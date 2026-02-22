@@ -12,6 +12,25 @@ import { apiClient } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/auth/logout-button";
 
+const normalizeWhitespace = (text: string) => text.replace(/\s+/g, " ").trim();
+
+const formatDictationText = (raw: string, previousText: string) => {
+  const text = normalizeWhitespace(raw);
+  if (!text) return "";
+
+  const previous = previousText.trim();
+  const shouldCapitalize =
+    previous.length === 0 || /[.!?]\s*$/.test(previous);
+
+  const withCapital =
+    shouldCapitalize && text.length > 0
+      ? text.charAt(0).toUpperCase() + text.slice(1)
+      : text;
+
+  const withPunctuation = /[.!?]$/.test(withCapital) ? withCapital : `${withCapital}.`;
+  return withPunctuation;
+};
+
 export default function WaybookDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -168,10 +187,13 @@ export default function WaybookDetailPage() {
       }
 
       if (finalText.trim()) {
-        editor?.chain().focus().insertContent(`${finalText.trim()} `).run();
+        const formatted = formatDictationText(finalText, editor?.getText() ?? "");
+        if (formatted) {
+          editor?.chain().focus().insertContent(`${formatted} `).run();
+        }
       }
 
-      setLiveTranscript(interim.trim());
+      setLiveTranscript(normalizeWhitespace(interim));
     };
 
     recognition.onerror = (event: any) => {

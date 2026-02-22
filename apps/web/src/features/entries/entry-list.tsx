@@ -8,7 +8,11 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
 
-const looksLikeHtml = (value: string) => /<([a-z][a-z0-9]*)\b[^>]*>/i.test(value);
+const looksLikeTiptapHtml = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("<") || !trimmed.endsWith(">")) return false;
+  return /<(p|h1|h2|h3|h4|h5|h6|ul|ol|li|blockquote|pre|code|hr|strong|em|u|s)\b/i.test(trimmed);
+};
 
 export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefresh?: () => Promise<void> | void }) => {
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export const EntryList = ({ entries, onRefresh }: { entries: EntryDTO[]; onRefre
           <Card key={entry.id}>
             <p className="text-sm text-slate-500">{new Date(entry.capturedAt).toLocaleString()}</p>
             {entry.textContent ? (
-              looksLikeHtml(entry.textContent) ? (
+              looksLikeTiptapHtml(entry.textContent) ? (
                 <div
                   className="prose prose-slate mt-2 max-w-none text-sm"
                   dangerouslySetInnerHTML={{ __html: entry.textContent }}
