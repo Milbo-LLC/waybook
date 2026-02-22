@@ -8,7 +8,7 @@ export const LogoutButton = () => {
 
   return (
     <button
-      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium"
+      className="wb-btn-secondary"
       onClick={async () => {
         await signOut();
         router.push("/login" as any);

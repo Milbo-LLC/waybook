@@ -4,10 +4,24 @@
 
 :root {
   color-scheme: light;
+  --bg: #f3f5f7;
+  --bg-accent: #e7ecef;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --text: #142033;
+  --text-muted: #5d6b82;
+  --border: #d8e0ea;
+  --brand: #1f6f5c;
+  --brand-strong: #195847;
+  --brand-soft: #e8f3ef;
+  --danger: #b42318;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: var(--font-sans, "Avenir Next"), "Nunito Sans", "Segoe UI", sans-serif;
+  @apply antialiased;
+  color: var(--text);
+  background: radial-gradient(1200px 600px at 0% -10%, var(--bg-accent), transparent 70%), var(--bg);
 }
 
 html,
@@ -15,7 +29,76 @@ body {
   overflow-x: hidden;
 }
 
+a {
+  @apply transition-colors;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(31, 111, 92, 0.35);
+  outline-offset: 2px;
+}
+
 @layer components {
+  .wb-surface {
+    @apply rounded-2xl border shadow-sm;
+    background-color: var(--surface);
+    border-color: var(--border);
+  }
+
+  .wb-surface-soft {
+    @apply rounded-xl border;
+    background-color: var(--surface-soft);
+    border-color: var(--border);
+  }
+
+  .wb-title {
+    @apply font-semibold tracking-tight;
+    color: var(--text);
+  }
+
+  .wb-muted {
+    color: var(--text-muted);
+  }
+
+  .wb-pill {
+    @apply inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    background: var(--surface);
+  }
+
+  .wb-pill-active {
+    color: white;
+    border-color: transparent;
+    background: var(--brand);
+  }
+
+  .wb-btn-primary {
+    @apply rounded-xl px-4 py-2 text-sm font-semibold text-white;
+    background: var(--brand);
+  }
+
+  .wb-btn-primary:hover {
+    background: var(--brand-strong);
+  }
+
+  .wb-btn-secondary {
+    @apply rounded-xl border px-4 py-2 text-sm font-medium;
+    border-color: var(--border);
+    color: var(--text);
+    background: var(--surface);
+  }
+
+  .wb-input {
+    @apply w-full rounded-xl border px-3 py-2 text-sm;
+    border-color: var(--border);
+    background: var(--surface);
+  }
+
   .ProseMirror h1 {
     @apply mt-6 text-3xl font-semibold;
   }

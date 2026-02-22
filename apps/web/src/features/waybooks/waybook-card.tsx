@@ -4,17 +4,17 @@ import Link from "next/link";
 
 export const WaybookCard = ({ waybook }: { waybook: WaybookDTO }) => {
   return (
-    <Card>
+    <Card className="wb-surface p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold">{waybook.title}</h3>
-          <p className="text-sm text-slate-600">{waybook.startDate} to {waybook.endDate}</p>
+          <h3 className="wb-title text-xl">{waybook.title}</h3>
+          <p className="wb-muted mt-1 text-sm">{waybook.startDate} to {waybook.endDate}</p>
         </div>
-        <Link className="text-sm font-medium text-brand-700" href={`/app/waybooks/${waybook.id}`}>
+        <Link className="wb-btn-secondary !px-3 !py-1.5 text-xs" href={`/app/waybooks/${waybook.id}`}>
           Open
         </Link>
       </div>
-      {waybook.description ? <p className="mt-2 text-sm text-slate-700">{waybook.description}</p> : null}
+      {waybook.description ? <p className="wb-muted mt-3 text-sm">{waybook.description}</p> : null}
     </Card>
   );
 };

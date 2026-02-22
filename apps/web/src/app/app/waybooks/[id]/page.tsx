@@ -36,7 +36,7 @@ export default function WaybookDetailPage() {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [timeline, setTimeline] = useState<Awaited<ReturnType<typeof apiClient.getTimeline>> | null>(null);
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof apiClient.listEntries>>["items"]>([]);
-  const [activeTab, setActiveTab] = useState<TabKey>("capture");
+  const [activeTab, setActiveTab] = useState<TabKey>("plan");
 
   const [savingQuickEntry, setSavingQuickEntry] = useState(false);
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
@@ -363,9 +363,9 @@ export default function WaybookDetailPage() {
 
   if (loading) {
     return (
-      <PageShell>
+      <PageShell className="pt-20">
         <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-brand-700" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-[var(--brand)]" />
         </div>
       </PageShell>
     );
@@ -373,7 +373,7 @@ export default function WaybookDetailPage() {
 
   if (!timeline) {
     return (
-      <PageShell>
+      <PageShell className="pt-20">
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error ?? "Unable to load this trip."}
         </div>
@@ -383,15 +383,15 @@ export default function WaybookDetailPage() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-[120] border-b border-slate-200/80 bg-white">
-        <div className="mx-auto flex h-10 w-full max-w-5xl items-center justify-between px-4">
-          <button className="text-xs font-semibold tracking-tight text-slate-900" onClick={() => router.push("/")} type="button">
+      <header className="fixed inset-x-0 top-0 z-[120] border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
+          <button className="wb-title text-lg" onClick={() => router.push("/")} type="button">
             Waybook
           </button>
           <div className="relative" ref={profileMenuRef}>
             <button
               aria-label="Open profile menu"
-              className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200"
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200"
               onClick={() => setProfileOpen((open) => !open)}
               type="button"
             >
@@ -426,20 +426,20 @@ export default function WaybookDetailPage() {
         </div>
       </header>
 
-      <PageShell className="overflow-x-hidden pb-8 pt-14">
-      <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2">
+      <PageShell className="overflow-x-hidden pb-8 pt-20">
+      <section className="wb-surface sticky top-16 z-[70] px-4 py-3">
+        <div className="flex items-start gap-2">
           <button
             aria-label="Back to trips"
-            className="text-xl leading-none text-slate-700 transition hover:text-slate-900"
+            className="mt-0.5 text-xl leading-none text-slate-700 transition hover:text-slate-900"
             onClick={() => router.push("/")}
             type="button"
           >
             ←
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold leading-tight">{timeline?.waybook.title ?? "Waybook"}</h1>
-            <p className="text-xs text-slate-500">
+            <h1 className="wb-title truncate text-xl leading-tight">{timeline?.waybook.title ?? "Waybook"}</h1>
+            <p className="wb-muted text-xs">
               {timeline.waybook.startDate} to {timeline.waybook.endDate}
             </p>
           </div>
@@ -448,8 +448,8 @@ export default function WaybookDetailPage() {
           {(["plan", "itinerary", "bookings", "expenses", "capture", "reflect", "timeline", "members", "settings"] as TabKey[]).map((tab) => (
             <button
               key={tab}
-              className={`rounded-full px-3 py-1 text-xs capitalize ${
-                activeTab === tab ? "bg-brand-700 text-white" : "bg-white text-slate-700 ring-1 ring-slate-200"
+              className={`wb-pill capitalize ${
+                activeTab === tab ? "wb-pill-active" : ""
               }`}
               onClick={() => setActiveTab(tab)}
               type="button"
@@ -463,18 +463,18 @@ export default function WaybookDetailPage() {
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {activeTab === "plan" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Plan</h2>
-          <p className="mt-1 text-sm text-slate-600">Capture ideas, vote, and assign prep tasks.</p>
+        <section className="wb-surface p-5">
+          <h2 className="wb-title text-lg">Plan</h2>
+          <p className="wb-muted mt-1 text-sm">Capture ideas, vote, and assign prep tasks.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             <input
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              className="wb-input"
               onChange={(event) => setPlanTitle(event.target.value)}
               placeholder="Add a planning idea (e.g., Zipline in Monteverde)"
               value={planTitle}
             />
             <button
-              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={!canEditTripContent}
               onClick={async () => {
                 if (!planTitle.trim()) return;
@@ -544,7 +544,7 @@ export default function WaybookDetailPage() {
             <h3 className="text-sm font-semibold">Trip tasks</h3>
             <div className="mt-2 grid gap-3 sm:grid-cols-[1fr_200px_auto]">
               <input
-                className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+                className="wb-input"
                 onChange={(event) => setTaskTitle(event.target.value)}
                 placeholder="Task title"
                 value={taskTitle}
@@ -556,7 +556,7 @@ export default function WaybookDetailPage() {
                 value={taskDueAt}
               />
               <button
-                className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="wb-btn-primary disabled:opacity-60"
                 disabled={!canEditTripContent}
                 onClick={async () => {
                   if (!taskTitle.trim()) return;
@@ -604,12 +604,12 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "itinerary" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Itinerary</h2>
-          <p className="mt-1 text-sm text-slate-600">Schedule what the trip will actually look like day-to-day.</p>
+        <section className="wb-surface p-5">
+          <h2 className="wb-title text-lg">Itinerary</h2>
+          <p className="wb-muted mt-1 text-sm">Schedule what the trip will actually look like day-to-day.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
             <input
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              className="wb-input"
               onChange={(event) => setItineraryTitle(event.target.value)}
               placeholder="Event title"
               value={itineraryTitle}
@@ -621,7 +621,7 @@ export default function WaybookDetailPage() {
               value={itineraryStart}
             />
             <button
-              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={!canEditTripContent}
               onClick={async () => {
                 if (!itineraryTitle.trim() || !itineraryStart) return;
@@ -651,12 +651,12 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "bookings" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Bookings</h2>
-          <p className="mt-1 text-sm text-slate-600">Track provider checkouts and confirmations in one place.</p>
+        <section className="wb-surface p-5">
+          <h2 className="wb-title text-lg">Bookings</h2>
+          <p className="wb-muted mt-1 text-sm">Track provider checkouts and confirmations in one place.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
             <input
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              className="wb-input"
               onChange={(event) => setBookingTitle(event.target.value)}
               placeholder="Booking title"
               value={bookingTitle}
@@ -673,7 +673,7 @@ export default function WaybookDetailPage() {
               <option value="other">other</option>
             </select>
             <button
-              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={!canEditTripContent}
               onClick={async () => {
                 if (!bookingTitle.trim()) return;
@@ -723,12 +723,12 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "expenses" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Expenses</h2>
-          <p className="mt-1 text-sm text-slate-600">Track spend and see who should settle with whom.</p>
+        <section className="wb-surface p-5">
+          <h2 className="wb-title text-lg">Expenses</h2>
+          <p className="wb-muted mt-1 text-sm">Track spend and see who should settle with whom.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_120px_auto]">
             <input
-              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              className="wb-input"
               onChange={(event) => setExpenseTitle(event.target.value)}
               placeholder="Expense title"
               value={expenseTitle}
@@ -747,7 +747,7 @@ export default function WaybookDetailPage() {
               value={expenseCurrency}
             />
             <button
-              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={!canEditTripContent}
               onClick={async () => {
                 const amount = Number(expenseAmount);
@@ -801,11 +801,11 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "capture" ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="wb-surface p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Capture</h2>
-              <p className="mt-1 text-sm text-slate-600">Write naturally. Add media. Save once.</p>
+                <h2 className="wb-title text-lg">Capture</h2>
+                <p className="wb-muted mt-1 text-sm">Write naturally. Add media. Save once.</p>
             </div>
             <button
               className={`rounded-full px-3 py-1.5 text-xs font-medium ${
@@ -848,7 +848,7 @@ export default function WaybookDetailPage() {
 
           <div className="mt-4 flex gap-2">
             <button
-              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="wb-btn-primary disabled:opacity-60"
               disabled={savingQuickEntry || !canSaveCapture || !canEditTripContent}
               onClick={async () => {
                 if (!waybookId) return;
@@ -891,9 +891,9 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "reflect" ? (
-        <section className="rounded-xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Daily reflection</h2>
-          <p className="mt-1 text-sm text-slate-600">Top memory and quick reflection for today.</p>
+        <section className="wb-surface p-4">
+          <h2 className="wb-title text-lg">Daily reflection</h2>
+          <p className="wb-muted mt-1 text-sm">Top memory and quick reflection for today.</p>
           <textarea
             className="mt-3 w-full rounded border p-2 text-sm"
             onChange={(event) => setSummaryText(event.target.value)}
@@ -903,7 +903,7 @@ export default function WaybookDetailPage() {
           />
           <div className="mt-3 flex gap-2">
             <button
-              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={savingSummary || !canEditTripContent}
               onClick={async () => {
                 if (!waybookId) return;
@@ -941,9 +941,9 @@ export default function WaybookDetailPage() {
       ) : null}
 
       {activeTab === "members" ? (
-        <section className="rounded-xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Members</h2>
-          <p className="mt-1 text-sm text-slate-600">Invite people by email so they can post to this trip.</p>
+        <section className="wb-surface p-4">
+          <h2 className="wb-title text-lg">Members</h2>
+          <p className="wb-muted mt-1 text-sm">Invite people by email so they can post to this trip.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_150px_auto]">
             <input
               className="w-full rounded border p-2 text-sm"
@@ -961,7 +961,7 @@ export default function WaybookDetailPage() {
               <option value="viewer">Viewer</option>
             </select>
             <button
-              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              className="wb-btn-primary disabled:opacity-60"
               disabled={!canManageTrip}
               onClick={async () => {
                 if (!canManageTrip) {
@@ -1120,9 +1120,9 @@ export default function WaybookDetailPage() {
 
       {activeTab === "settings" ? (
         <section className="space-y-4">
-          <div className="rounded-xl border bg-white p-4">
-            <h2 className="text-lg font-semibold">Trip Settings</h2>
-            <p className="mt-1 text-sm text-slate-600">Edit trip details and visibility.</p>
+          <div className="wb-surface p-4">
+            <h2 className="wb-title text-lg">Trip Settings</h2>
+            <p className="wb-muted mt-1 text-sm">Edit trip details and visibility.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 <span className="mb-1 block text-slate-600">Title</span>
@@ -1179,7 +1179,7 @@ export default function WaybookDetailPage() {
             </label>
             <div className="mt-3 flex items-center gap-3">
               <button
-                className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="wb-btn-primary disabled:opacity-60"
                 disabled={savingSettings || !canManageTrip}
                 onClick={() => void saveTripSettings()}
                 type="button"
