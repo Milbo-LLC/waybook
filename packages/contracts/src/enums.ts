@@ -41,3 +41,49 @@ export type PromptType = z.infer<typeof promptTypeSchema>;
 
 export const waybookMemberRoleSchema = z.enum(["owner", "editor", "viewer"]);
 export type WaybookMemberRole = z.infer<typeof waybookMemberRoleSchema>;
+
+export const planningItemStatusSchema = z.enum([
+  "idea",
+  "shortlisted",
+  "planned",
+  "booked",
+  "done",
+  "skipped"
+]);
+export type PlanningItemStatus = z.infer<typeof planningItemStatusSchema>;
+
+export const bookingTypeSchema = z.enum(["activity", "stay", "transport", "flight", "other"]);
+export type BookingType = z.infer<typeof bookingTypeSchema>;
+
+export const bookingStatusSchema = z.enum([
+  "draft",
+  "pending_checkout",
+  "confirmed",
+  "cancelled",
+  "failed",
+  "refunded"
+]);
+export type BookingStatus = z.infer<typeof bookingStatusSchema>;
+
+export const expenseSplitMethodSchema = z.enum(["equal", "custom", "percentage", "shares"]);
+export type ExpenseSplitMethod = z.infer<typeof expenseSplitMethodSchema>;
+
+export const expenseStatusSchema = z.enum(["logged", "settled"]);
+export type ExpenseStatus = z.infer<typeof expenseStatusSchema>;
+
+export const taskStatusSchema = z.enum(["todo", "in_progress", "done"]);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
+export const taskPrioritySchema = z.enum(["low", "medium", "high"]);
+export type TaskPriority = z.infer<typeof taskPrioritySchema>;
+
+export const notificationChannelSchema = z.enum(["in_app", "email"]);
+export type NotificationChannel = z.infer<typeof notificationChannelSchema>;
+
+export const notificationTypeSchema = z.enum([
+  "task_due",
+  "booking_deadline",
+  "day_plan_start",
+  "summary_prompt"
+]);
+export type NotificationType = z.infer<typeof notificationTypeSchema>;

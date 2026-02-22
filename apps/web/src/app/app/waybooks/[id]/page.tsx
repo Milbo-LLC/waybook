@@ -11,7 +11,7 @@ import { EntryList } from "@/features/entries/entry-list";
 import { apiClient } from "@/lib/api";
 import { getSession, signOut, type SessionUser } from "@/lib/auth";
 
-type TabKey = "capture" | "timeline" | "members" | "settings";
+type TabKey = "plan" | "itinerary" | "bookings" | "expenses" | "capture" | "reflect" | "timeline" | "members" | "settings";
 
 const normalizeWhitespace = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -62,6 +62,23 @@ export default function WaybookDetailPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [membersData, setMembersData] = useState<ListMembersResponse | null>(null);
+  const [planningItems, setPlanningItems] = useState<Awaited<ReturnType<typeof apiClient.listPlanningItems>>["items"]>([]);
+  const [tripTasks, setTripTasks] = useState<Awaited<ReturnType<typeof apiClient.listTasks>>["items"]>([]);
+  const [bookingRecords, setBookingRecords] = useState<Awaited<ReturnType<typeof apiClient.listBookings>>["items"]>([]);
+  const [expenseEntries, setExpenseEntries] = useState<Awaited<ReturnType<typeof apiClient.listExpenses>>["items"]>([]);
+  const [itineraryEvents, setItineraryEvents] = useState<Awaited<ReturnType<typeof apiClient.listItineraryEvents>>["items"]>([]);
+  const [settlementSummary, setSettlementSummary] = useState<Awaited<ReturnType<typeof apiClient.getSettlementSummary>> | null>(null);
+
+  const [planTitle, setPlanTitle] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueAt, setTaskDueAt] = useState("");
+  const [bookingTitle, setBookingTitle] = useState("");
+  const [bookingType, setBookingType] = useState<"activity" | "stay" | "transport" | "flight" | "other">("activity");
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseCurrency, setExpenseCurrency] = useState("USD");
+  const [itineraryTitle, setItineraryTitle] = useState("");
+  const [itineraryStart, setItineraryStart] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
@@ -87,14 +104,36 @@ export default function WaybookDetailPage() {
 
   const loadWaybook = async () => {
     if (!waybookId) return;
-    const [timelineResponse, entriesResponse, membersResponse] = await Promise.all([
+    const [
+      timelineResponse,
+      entriesResponse,
+      membersResponse,
+      planningResponse,
+      tasksResponse,
+      bookingsResponse,
+      expensesResponse,
+      itineraryResponse,
+      settlementsResponse
+    ] = await Promise.all([
       apiClient.getTimeline(waybookId),
       apiClient.listEntries(waybookId),
-      apiClient.listWaybookMembers(waybookId)
+      apiClient.listWaybookMembers(waybookId),
+      apiClient.listPlanningItems(waybookId),
+      apiClient.listTasks(waybookId),
+      apiClient.listBookings(waybookId),
+      apiClient.listExpenses(waybookId),
+      apiClient.listItineraryEvents(waybookId),
+      apiClient.getSettlementSummary(waybookId)
     ]);
     setTimeline(timelineResponse);
     setEntries(entriesResponse.items);
     setMembersData(membersResponse);
+    setPlanningItems(planningResponse.items);
+    setTripTasks(tasksResponse.items);
+    setBookingRecords(bookingsResponse.items);
+    setExpenseEntries(expensesResponse.items);
+    setItineraryEvents(itineraryResponse.items);
+    setSettlementSummary(settlementsResponse);
     setSettingsDraft({
       title: timelineResponse.waybook.title,
       description: timelineResponse.waybook.description ?? "",
@@ -406,7 +445,7 @@ export default function WaybookDetailPage() {
           </div>
         </div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {(["capture", "timeline", "members", "settings"] as TabKey[]).map((tab) => (
+          {(["plan", "itinerary", "bookings", "expenses", "capture", "reflect", "timeline", "members", "settings"] as TabKey[]).map((tab) => (
             <button
               key={tab}
               className={`rounded-full px-3 py-1 text-xs capitalize ${
@@ -423,137 +462,475 @@ export default function WaybookDetailPage() {
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      {activeTab === "capture" ? (
-        <>
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Capture</h2>
-                <p className="mt-1 text-sm text-slate-600">Write naturally. Add media. Save once.</p>
+      {activeTab === "plan" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Plan</h2>
+          <p className="mt-1 text-sm text-slate-600">Capture ideas, vote, and assign prep tasks.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <input
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setPlanTitle(event.target.value)}
+              placeholder="Add a planning idea (e.g., Zipline in Monteverde)"
+              value={planTitle}
+            />
+            <button
+              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={!canEditTripContent}
+              onClick={async () => {
+                if (!planTitle.trim()) return;
+                await apiClient.createPlanningItem(waybookId, { title: planTitle.trim(), location: null });
+                setPlanTitle("");
+                await loadWaybook();
+              }}
+              type="button"
+            >
+              Add idea
+            </button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {planningItems.map((item) => (
+              <div key={item.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-slate-500 capitalize">{item.status.replace("_", " ")}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="rounded border px-2 py-1 text-xs"
+                      onClick={async () => {
+                        await apiClient.createPlanningVote(item.id, { vote: "up" });
+                        await loadWaybook();
+                      }}
+                      type="button"
+                    >
+                      👍 {item.votesUp}
+                    </button>
+                    <button
+                      className="rounded border px-2 py-1 text-xs"
+                      onClick={async () => {
+                        await apiClient.createPlanningVote(item.id, { vote: "down" });
+                        await loadWaybook();
+                      }}
+                      type="button"
+                    >
+                      👎 {item.votesDown}
+                    </button>
+                    {canEditTripContent ? (
+                      <select
+                        className="rounded border px-2 py-1 text-xs"
+                        onChange={async (event) => {
+                          await apiClient.updatePlanningItem(item.id, { status: event.target.value as any });
+                          await loadWaybook();
+                        }}
+                        value={item.status}
+                      >
+                        <option value="idea">idea</option>
+                        <option value="shortlisted">shortlisted</option>
+                        <option value="planned">planned</option>
+                        <option value="booked">booked</option>
+                        <option value="done">done</option>
+                        <option value="skipped">skipped</option>
+                      </select>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <button
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  isDictating ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
-                }`}
-                onClick={toggleDictation}
-                type="button"
-              >
-                {isDictating ? "Stop Listening" : "Speak to Write"}
-              </button>
-            </div>
+            ))}
+            {!planningItems.length ? <p className="text-sm text-slate-500">No plan items yet.</p> : null}
+          </div>
 
-            <div className="mt-4">
-              <EditorContent editor={editor} />
-              {isDictating ? (
-                <p className="mt-2 text-xs text-slate-500">Listening... {liveTranscript ? `"${liveTranscript}"` : "start talking"}</p>
-              ) : null}
-              {!speechSupported ? (
-                <p className="mt-2 text-xs text-amber-700">Speech-to-text is limited on mobile browsers.</p>
-              ) : null}
-              {dictationHint ? <p className="mt-2 text-xs text-slate-500">{dictationHint}</p> : null}
-            </div>
-
-            <div className="mt-4">
-              <label className="text-sm font-medium">Add media</label>
+          <div className="mt-6 border-t border-slate-100 pt-4">
+            <h3 className="text-sm font-semibold">Trip tasks</h3>
+            <div className="mt-2 grid gap-3 sm:grid-cols-[1fr_200px_auto]">
               <input
-                ref={fileInputRef}
-                accept="image/*,video/*,audio/*"
-                className="mt-2 block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm"
-                multiple
-                onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
-                type="file"
+                className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+                onChange={(event) => setTaskTitle(event.target.value)}
+                placeholder="Task title"
+                value={taskTitle}
               />
-              {selectedFiles.length ? (
-                <p className="mt-1 text-xs text-slate-500">
-                  {selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected
-                </p>
-              ) : null}
-            </div>
-
-            <div className="mt-4 flex gap-2">
+              <input
+                className="rounded-lg border border-slate-200 p-2 text-sm"
+                onChange={(event) => setTaskDueAt(event.target.value)}
+                type="datetime-local"
+                value={taskDueAt}
+              />
               <button
                 className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={savingQuickEntry || !canSaveCapture || !canEditTripContent}
+                disabled={!canEditTripContent}
                 onClick={async () => {
-                  if (!waybookId) return;
-                  setSavingQuickEntry(true);
-                  setCaptureStatus("Creating entry...");
-                  setError(null);
-                  try {
-                    const entry = await apiClient.createEntry(waybookId, {
-                      capturedAt: new Date().toISOString(),
-                      textContent: captureText ? captureHtml : null,
-                      location: null,
-                      idempotencyKey: crypto.randomUUID()
-                    });
-
-                    if (selectedFiles.length) {
-                      setCaptureStatus(`Uploading ${selectedFiles.length} file(s)...`);
-                      for (const file of selectedFiles) await uploadFileToEntry(entry.id, file);
-                    }
-
-                    setCaptureHtml("");
-                    editor?.commands.clearContent();
-                    setSelectedFiles([]);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                    setCaptureStatus("Saved");
-                    await loadWaybook();
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Unable to save entry");
-                    setCaptureStatus(null);
-                  } finally {
-                    setSavingQuickEntry(false);
-                  }
+                  if (!taskTitle.trim()) return;
+                  await apiClient.createTask(waybookId, {
+                    title: taskTitle.trim(),
+                    dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : null
+                  });
+                  setTaskTitle("");
+                  setTaskDueAt("");
+                  await loadWaybook();
                 }}
                 type="button"
               >
-                {!canEditTripContent ? "Read only" : savingQuickEntry ? "Saving..." : "Save post"}
+                Add task
               </button>
             </div>
-            {captureStatus ? <p className="mt-2 text-xs text-slate-500">{captureStatus}</p> : null}
-          </section>
+            <div className="mt-3 space-y-2">
+              {tripTasks.map((task) => (
+                <div key={task.id} className="flex items-center justify-between rounded border border-slate-200 p-2 text-sm">
+                  <div>
+                    <p>{task.title}</p>
+                    <p className="text-xs text-slate-500">
+                      {task.dueAt ? new Date(task.dueAt).toLocaleString() : "No due date"}
+                    </p>
+                  </div>
+                  {canEditTripContent ? (
+                    <select
+                      className="rounded border px-2 py-1 text-xs"
+                      onChange={async (event) => {
+                        await apiClient.updateTask(task.id, { status: event.target.value as any });
+                        await loadWaybook();
+                      }}
+                      value={task.status}
+                    >
+                      <option value="todo">todo</option>
+                      <option value="in_progress">in progress</option>
+                      <option value="done">done</option>
+                    </select>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-          <section className="rounded-xl border bg-white p-4">
-            <h2 className="text-lg font-semibold">Daily reflection</h2>
-            <p className="mt-1 text-sm text-slate-600">Top memory and quick reflection for today.</p>
-            <textarea
-              className="mt-3 w-full rounded border p-2 text-sm"
-              onChange={(event) => setSummaryText(event.target.value)}
-              placeholder={todaySummary?.summaryText ?? "What stood out today?"}
-              rows={3}
-              value={summaryText}
+      {activeTab === "itinerary" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Itinerary</h2>
+          <p className="mt-1 text-sm text-slate-600">Schedule what the trip will actually look like day-to-day.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_220px_auto]">
+            <input
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setItineraryTitle(event.target.value)}
+              placeholder="Event title"
+              value={itineraryTitle}
             />
-            <div className="mt-3 flex gap-2">
-              <button
-                className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={savingSummary || !canEditTripContent}
-                onClick={async () => {
-                  if (!waybookId) return;
-                  setSavingSummary(true);
-                  setError(null);
-                  try {
-                    await apiClient.createDaySummary(waybookId, {
-                      summaryDate: todayDate,
-                      summaryText: summaryText.trim() || todaySummary?.summaryText || null,
-                      topMomentEntryId: entries[0]?.id ?? null,
-                      moodScore: 4,
-                      energyScore: 4
-                    });
-                    setSummaryText("");
-                    await loadWaybook();
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Unable to save daily reflection");
-                  } finally {
-                    setSavingSummary(false);
-                  }
-                }}
-                type="button"
-              >
-                {!canEditTripContent ? "Read only" : savingSummary ? "Saving..." : "Save reflection"}
-              </button>
+            <input
+              className="rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setItineraryStart(event.target.value)}
+              type="datetime-local"
+              value={itineraryStart}
+            />
+            <button
+              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={!canEditTripContent}
+              onClick={async () => {
+                if (!itineraryTitle.trim() || !itineraryStart) return;
+                await apiClient.createItineraryEvent(waybookId, {
+                  title: itineraryTitle.trim(),
+                  startTime: new Date(itineraryStart).toISOString()
+                });
+                setItineraryTitle("");
+                setItineraryStart("");
+                await loadWaybook();
+              }}
+              type="button"
+            >
+              Add event
+            </button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {itineraryEvents.map((event) => (
+              <div key={event.id} className="rounded border border-slate-200 p-3 text-sm">
+                <p className="font-medium">{event.title}</p>
+                <p className="text-xs text-slate-500">{new Date(event.startTime).toLocaleString()}</p>
+              </div>
+            ))}
+            {!itineraryEvents.length ? <p className="text-sm text-slate-500">No itinerary events yet.</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "bookings" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Bookings</h2>
+          <p className="mt-1 text-sm text-slate-600">Track provider checkouts and confirmations in one place.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_160px_auto]">
+            <input
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setBookingTitle(event.target.value)}
+              placeholder="Booking title"
+              value={bookingTitle}
+            />
+            <select
+              className="rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setBookingType(event.target.value as any)}
+              value={bookingType}
+            >
+              <option value="activity">activity</option>
+              <option value="stay">stay</option>
+              <option value="transport">transport</option>
+              <option value="flight">flight</option>
+              <option value="other">other</option>
+            </select>
+            <button
+              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={!canEditTripContent}
+              onClick={async () => {
+                if (!bookingTitle.trim()) return;
+                await apiClient.createBooking(waybookId, {
+                  title: bookingTitle.trim(),
+                  type: bookingType
+                });
+                setBookingTitle("");
+                await loadWaybook();
+              }}
+              type="button"
+            >
+              Add booking
+            </button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {bookingRecords.map((booking) => (
+              <div key={booking.id} className="flex items-center justify-between rounded border border-slate-200 p-3 text-sm">
+                <div>
+                  <p className="font-medium">{booking.title}</p>
+                  <p className="text-xs text-slate-500">
+                    {booking.type} • {booking.bookingStatus}
+                  </p>
+                </div>
+                {canEditTripContent ? (
+                  <select
+                    className="rounded border px-2 py-1 text-xs"
+                    onChange={async (event) => {
+                      await apiClient.updateBooking(booking.id, { bookingStatus: event.target.value as any });
+                      await loadWaybook();
+                    }}
+                    value={booking.bookingStatus}
+                  >
+                    <option value="draft">draft</option>
+                    <option value="pending_checkout">pending_checkout</option>
+                    <option value="confirmed">confirmed</option>
+                    <option value="cancelled">cancelled</option>
+                    <option value="failed">failed</option>
+                    <option value="refunded">refunded</option>
+                  </select>
+                ) : null}
+              </div>
+            ))}
+            {!bookingRecords.length ? <p className="text-sm text-slate-500">No bookings yet.</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "expenses" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Expenses</h2>
+          <p className="mt-1 text-sm text-slate-600">Track spend and see who should settle with whom.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_120px_auto]">
+            <input
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setExpenseTitle(event.target.value)}
+              placeholder="Expense title"
+              value={expenseTitle}
+            />
+            <input
+              className="rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setExpenseAmount(event.target.value)}
+              placeholder="Amount"
+              type="number"
+              value={expenseAmount}
+            />
+            <input
+              className="rounded-lg border border-slate-200 p-2 text-sm"
+              onChange={(event) => setExpenseCurrency(event.target.value.toUpperCase())}
+              placeholder="USD"
+              value={expenseCurrency}
+            />
+            <button
+              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={!canEditTripContent}
+              onClick={async () => {
+                const amount = Number(expenseAmount);
+                if (!expenseTitle.trim() || Number.isNaN(amount) || amount <= 0 || !sessionUser) return;
+                const minor = Math.round(amount * 100);
+                await apiClient.createExpense(waybookId, {
+                  title: expenseTitle.trim(),
+                  paidByUserId: sessionUser.id,
+                  currency: expenseCurrency || "USD",
+                  amountMinor: minor,
+                  tripBaseCurrency: expenseCurrency || "USD",
+                  tripBaseAmountMinor: minor,
+                  incurredAt: new Date().toISOString(),
+                  splits: []
+                });
+                setExpenseTitle("");
+                setExpenseAmount("");
+                await loadWaybook();
+              }}
+              type="button"
+            >
+              Add expense
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {expenseEntries.map((expense) => (
+              <div key={expense.id} className="rounded border border-slate-200 p-3 text-sm">
+                <p className="font-medium">{expense.title}</p>
+                <p className="text-xs text-slate-500">
+                  {(expense.amountMinor / 100).toFixed(2)} {expense.currency} • paid by {expense.paidByUserId.slice(0, 8)}
+                </p>
+              </div>
+            ))}
+            {!expenseEntries.length ? <p className="text-sm text-slate-500">No expenses yet.</p> : null}
+          </div>
+
+          {settlementSummary?.items.length ? (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-semibold">Settlement suggestions</h3>
+              <div className="mt-2 space-y-2">
+                {settlementSummary.items.map((item, index) => (
+                  <p key={`${item.fromUserId}-${item.toUserId}-${index}`} className="text-sm text-slate-700">
+                    {item.fromUserId.slice(0, 8)} pays {item.toUserId.slice(0, 8)} {(item.amountMinor / 100).toFixed(2)} {item.currency}
+                  </p>
+                ))}
+              </div>
             </div>
-          </section>
-        </>
+          ) : null}
+        </section>
+      ) : null}
+
+      {activeTab === "capture" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Capture</h2>
+              <p className="mt-1 text-sm text-slate-600">Write naturally. Add media. Save once.</p>
+            </div>
+            <button
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                isDictating ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+              }`}
+              onClick={toggleDictation}
+              type="button"
+            >
+              {isDictating ? "Stop Listening" : "Speak to Write"}
+            </button>
+          </div>
+
+          <div className="mt-4">
+            <EditorContent editor={editor} />
+            {isDictating ? (
+              <p className="mt-2 text-xs text-slate-500">Listening... {liveTranscript ? `"${liveTranscript}"` : "start talking"}</p>
+            ) : null}
+            {!speechSupported ? (
+              <p className="mt-2 text-xs text-amber-700">Speech-to-text is limited on mobile browsers.</p>
+            ) : null}
+            {dictationHint ? <p className="mt-2 text-xs text-slate-500">{dictationHint}</p> : null}
+          </div>
+
+          <div className="mt-4">
+            <label className="text-sm font-medium">Add media</label>
+            <input
+              ref={fileInputRef}
+              accept="image/*,video/*,audio/*"
+              className="mt-2 block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm"
+              multiple
+              onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
+              type="file"
+            />
+            {selectedFiles.length ? (
+              <p className="mt-1 text-xs text-slate-500">
+                {selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <button
+              className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={savingQuickEntry || !canSaveCapture || !canEditTripContent}
+              onClick={async () => {
+                if (!waybookId) return;
+                setSavingQuickEntry(true);
+                setCaptureStatus("Creating entry...");
+                setError(null);
+                try {
+                  const entry = await apiClient.createEntry(waybookId, {
+                    capturedAt: new Date().toISOString(),
+                    textContent: captureText ? captureHtml : null,
+                    location: null,
+                    idempotencyKey: crypto.randomUUID()
+                  });
+
+                  if (selectedFiles.length) {
+                    setCaptureStatus(`Uploading ${selectedFiles.length} file(s)...`);
+                    for (const file of selectedFiles) await uploadFileToEntry(entry.id, file);
+                  }
+
+                  setCaptureHtml("");
+                  editor?.commands.clearContent();
+                  setSelectedFiles([]);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                  setCaptureStatus("Saved");
+                  await loadWaybook();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Unable to save entry");
+                  setCaptureStatus(null);
+                } finally {
+                  setSavingQuickEntry(false);
+                }
+              }}
+              type="button"
+            >
+              {!canEditTripContent ? "Read only" : savingQuickEntry ? "Saving..." : "Save post"}
+            </button>
+          </div>
+          {captureStatus ? <p className="mt-2 text-xs text-slate-500">{captureStatus}</p> : null}
+        </section>
+      ) : null}
+
+      {activeTab === "reflect" ? (
+        <section className="rounded-xl border bg-white p-4">
+          <h2 className="text-lg font-semibold">Daily reflection</h2>
+          <p className="mt-1 text-sm text-slate-600">Top memory and quick reflection for today.</p>
+          <textarea
+            className="mt-3 w-full rounded border p-2 text-sm"
+            onChange={(event) => setSummaryText(event.target.value)}
+            placeholder={todaySummary?.summaryText ?? "What stood out today?"}
+            rows={3}
+            value={summaryText}
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={savingSummary || !canEditTripContent}
+              onClick={async () => {
+                if (!waybookId) return;
+                setSavingSummary(true);
+                setError(null);
+                try {
+                  await apiClient.createDaySummary(waybookId, {
+                    summaryDate: todayDate,
+                    summaryText: summaryText.trim() || todaySummary?.summaryText || null,
+                    topMomentEntryId: entries[0]?.id ?? null,
+                    moodScore: 4,
+                    energyScore: 4
+                  });
+                  setSummaryText("");
+                  await loadWaybook();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Unable to save daily reflection");
+                } finally {
+                  setSavingSummary(false);
+                }
+              }}
+              type="button"
+            >
+              {!canEditTripContent ? "Read only" : savingSummary ? "Saving..." : "Save reflection"}
+            </button>
+          </div>
+        </section>
       ) : null}
 
       {activeTab === "timeline" ? (

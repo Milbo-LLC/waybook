@@ -31,6 +31,34 @@ export const reactionTypeEnum = pgEnum("reaction_type", [
 ]);
 export const promptTypeEnum = pgEnum("prompt_type", ["itinerary_gap", "location_gap", "day_reflection"]);
 export const waybookMemberRoleEnum = pgEnum("waybook_member_role", ["owner", "editor", "viewer"]);
+export const planningItemStatusEnum = pgEnum("planning_item_status", [
+  "idea",
+  "shortlisted",
+  "planned",
+  "booked",
+  "done",
+  "skipped"
+]);
+export const bookingTypeEnum = pgEnum("booking_type", ["activity", "stay", "transport", "flight", "other"]);
+export const bookingStatusEnum = pgEnum("booking_status", [
+  "draft",
+  "pending_checkout",
+  "confirmed",
+  "cancelled",
+  "failed",
+  "refunded"
+]);
+export const expenseSplitMethodEnum = pgEnum("expense_split_method", ["equal", "custom", "percentage", "shares"]);
+export const expenseStatusEnum = pgEnum("expense_status", ["logged", "settled"]);
+export const taskStatusEnum = pgEnum("task_status", ["todo", "in_progress", "done"]);
+export const taskPriorityEnum = pgEnum("task_priority", ["low", "medium", "high"]);
+export const notificationChannelEnum = pgEnum("notification_channel", ["in_app", "email"]);
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "task_due",
+  "booking_deadline",
+  "day_plan_start",
+  "summary_prompt"
+]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -367,4 +395,288 @@ export const promptEvents = pgTable(
     index("prompt_events_user_scheduled_idx").on(table.userId, table.scheduledFor),
     index("prompt_events_waybook_scheduled_idx").on(table.waybookId, table.scheduledFor)
   ]
+);
+
+export const planningItems = pgTable(
+  "planning_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    description: text("description"),
+    category: varchar("category", { length: 80 }),
+    status: planningItemStatusEnum("status").notNull().default("idea"),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    placeName: varchar("place_name", { length: 200 }),
+    estimatedCostMin: integer("estimated_cost_min"),
+    estimatedCostMax: integer("estimated_cost_max"),
+    sourceUrl: text("source_url"),
+    providerHint: varchar("provider_hint", { length: 80 }),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("planning_items_waybook_status_created_idx").on(table.waybookId, table.status, table.createdAt)]
+);
+
+export const planningVotes = pgTable(
+  "planning_votes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planningItemId: uuid("planning_item_id")
+      .notNull()
+      .references(() => planningItems.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    vote: varchar("vote", { length: 8 }).notNull(),
+    createdAt: now()
+  },
+  (table) => [
+    uniqueIndex("planning_votes_item_user_unique").on(table.planningItemId, table.userId),
+    index("planning_votes_item_created_idx").on(table.planningItemId, table.createdAt)
+  ]
+);
+
+export const planningComments = pgTable(
+  "planning_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planningItemId: uuid("planning_item_id")
+      .notNull()
+      .references(() => planningItems.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("planning_comments_item_created_idx").on(table.planningItemId, table.createdAt)]
+);
+
+export const tripTasks = pgTable(
+  "trip_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    description: text("description"),
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    status: taskStatusEnum("status").notNull().default("todo"),
+    priority: taskPriorityEnum("priority").notNull().default("medium"),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("trip_tasks_waybook_status_due_idx").on(table.waybookId, table.status, table.dueAt)]
+);
+
+export const bookingRecords = pgTable(
+  "booking_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    planningItemId: uuid("planning_item_id").references(() => planningItems.id, { onDelete: "set null" }),
+    type: bookingTypeEnum("type").notNull(),
+    provider: varchar("provider", { length: 80 }),
+    providerBookingId: varchar("provider_booking_id", { length: 160 }),
+    title: varchar("title", { length: 220 }).notNull(),
+    bookedForStart: timestamp("booked_for_start", { withTimezone: true }),
+    bookedForEnd: timestamp("booked_for_end", { withTimezone: true }),
+    bookingStatus: bookingStatusEnum("booking_status").notNull().default("draft"),
+    checkoutUrl: text("checkout_url"),
+    confirmationCode: varchar("confirmation_code", { length: 120 }),
+    bookedByUserId: uuid("booked_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    currency: varchar("currency", { length: 8 }),
+    totalAmountMinor: integer("total_amount_minor"),
+    refundPolicyText: text("refund_policy_text"),
+    cancellationDeadline: timestamp("cancellation_deadline", { withTimezone: true }),
+    rawPayload: jsonb("raw_payload"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    index("booking_records_waybook_status_start_idx").on(table.waybookId, table.bookingStatus, table.bookedForStart),
+    index("booking_records_provider_external_idx").on(table.provider, table.providerBookingId)
+  ]
+);
+
+export const bookingDocuments = pgTable(
+  "booking_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingRecordId: uuid("booking_record_id")
+      .notNull()
+      .references(() => bookingRecords.id, { onDelete: "cascade" }),
+    mediaAssetId: uuid("media_asset_id")
+      .notNull()
+      .references(() => mediaAssets.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 140 }),
+    createdAt: now()
+  },
+  (table) => [index("booking_documents_booking_created_idx").on(table.bookingRecordId, table.createdAt)]
+);
+
+export const expenseEntries = pgTable(
+  "expense_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    bookingRecordId: uuid("booking_record_id").references(() => bookingRecords.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    category: varchar("category", { length: 80 }),
+    paidByUserId: uuid("paid_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    currency: varchar("currency", { length: 8 }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    tripBaseCurrency: varchar("trip_base_currency", { length: 8 }).notNull(),
+    tripBaseAmountMinor: integer("trip_base_amount_minor").notNull(),
+    fxRate: doublePrecision("fx_rate"),
+    incurredAt: timestamp("incurred_at", { withTimezone: true }).notNull(),
+    notes: text("notes"),
+    splitMethod: expenseSplitMethodEnum("split_method").notNull().default("equal"),
+    status: expenseStatusEnum("status").notNull().default("logged"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("expense_entries_waybook_incurred_idx").on(table.waybookId, table.incurredAt)]
+);
+
+export const expenseSplits = pgTable(
+  "expense_splits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    expenseEntryId: uuid("expense_entry_id")
+      .notNull()
+      .references(() => expenseEntries.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amountMinor: integer("amount_minor"),
+    percentage: integer("percentage"),
+    shares: integer("shares"),
+    createdAt: now()
+  },
+  (table) => [
+    index("expense_splits_expense_user_idx").on(table.expenseEntryId, table.userId),
+    uniqueIndex("expense_splits_expense_user_unique").on(table.expenseEntryId, table.userId)
+  ]
+);
+
+export const itineraryEvents = pgTable(
+  "itinerary_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    planningItemId: uuid("planning_item_id").references(() => planningItems.id, { onDelete: "set null" }),
+    bookingRecordId: uuid("booking_record_id").references(() => bookingRecords.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+    endTime: timestamp("end_time", { withTimezone: true }),
+    bufferBeforeMin: integer("buffer_before_min"),
+    bufferAfterMin: integer("buffer_after_min"),
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("itinerary_events_waybook_start_idx").on(table.waybookId, table.startTime)]
+);
+
+export const entryItineraryLinks = pgTable(
+  "entry_itinerary_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => entries.id, { onDelete: "cascade" }),
+    itineraryEventId: uuid("itinerary_event_id")
+      .notNull()
+      .references(() => itineraryEvents.id, { onDelete: "cascade" }),
+    createdAt: now()
+  },
+  (table) => [
+    index("entry_itinerary_links_entry_created_idx").on(table.entryId, table.createdAt),
+    uniqueIndex("entry_itinerary_links_entry_event_unique").on(table.entryId, table.itineraryEventId)
+  ]
+);
+
+export const tripPreferences = pgTable("trip_preferences", {
+  waybookId: uuid("waybook_id")
+    .primaryKey()
+    .references(() => waybooks.id, { onDelete: "cascade" }),
+  baseCurrency: varchar("base_currency", { length: 8 }).notNull().default("USD"),
+  pace: varchar("pace", { length: 40 }),
+  budgetTier: varchar("budget_tier", { length: 40 }),
+  accessibilityNotes: text("accessibility_notes"),
+  quietHoursStart: varchar("quiet_hours_start", { length: 5 }),
+  quietHoursEnd: varchar("quiet_hours_end", { length: 5 }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const notificationRules = pgTable(
+  "notification_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    channel: notificationChannelEnum("channel").notNull(),
+    notificationType: notificationTypeEnum("notification_type").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    leadTimeMin: integer("lead_time_min"),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("notification_rules_waybook_user_channel_type_unique").on(
+      table.waybookId,
+      table.userId,
+      table.channel,
+      table.notificationType
+    )
+  ]
+);
+
+export const notificationEvents = pgTable(
+  "notification_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    notificationType: notificationTypeEnum("notification_type").notNull(),
+    channel: notificationChannelEnum("channel").notNull(),
+    payload: jsonb("payload"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    status: varchar("status", { length: 32 }).notNull().default("scheduled"),
+    error: text("error"),
+    createdAt: now()
+  },
+  (table) => [index("notification_events_user_scheduled_status_idx").on(table.userId, table.scheduledFor, table.status)]
 );

@@ -607,13 +607,50 @@ waybookRoutes.get("/waybooks/:waybookId/timeline", requireAuthMiddleware, async 
   const ratingsByEntry = await getRatingsByEntryIds(db, entryIds, user.id);
   const guidanceByEntry = await getGuidanceByEntryIds(db, entryIds);
   const summariesByDate = await getDaySummariesByWaybook(db, waybookId);
+  const entryLinkRows = entryIds.length
+    ? await db
+        .select()
+        .from(schema.entryItineraryLinks)
+        .where(inArray(schema.entryItineraryLinks.entryId, entryIds))
+    : [];
+  const itineraryEventIds = [...new Set(entryLinkRows.map((row) => row.itineraryEventId))];
+  const itineraryRows = itineraryEventIds.length
+    ? await db
+        .select()
+        .from(schema.itineraryEvents)
+        .where(inArray(schema.itineraryEvents.id, itineraryEventIds))
+    : [];
+  const bookingIds = [...new Set(itineraryRows.map((row) => row.bookingRecordId).filter((value): value is string => Boolean(value)))];
+  const bookingRows = bookingIds.length
+    ? await db.select().from(schema.bookingRecords).where(inArray(schema.bookingRecords.id, bookingIds))
+    : [];
+
+  const eventById = new Map(itineraryRows.map((row) => [row.id, row]));
+  const bookingById = new Map(bookingRows.map((row) => [row.id, row]));
+  const itineraryIdsByEntry = new Map<string, string[]>();
+  const bookingTagsByEntry = new Map<string, string[]>();
+  for (const link of entryLinkRows) {
+    const ids = itineraryIdsByEntry.get(link.entryId) ?? [];
+    ids.push(link.itineraryEventId);
+    itineraryIdsByEntry.set(link.entryId, ids);
+
+    const event = eventById.get(link.itineraryEventId);
+    const booking = event?.bookingRecordId ? bookingById.get(event.bookingRecordId) : null;
+    if (booking) {
+      const tags = bookingTagsByEntry.get(link.entryId) ?? [];
+      tags.push(`${booking.type}:${booking.bookingStatus}`);
+      bookingTagsByEntry.set(link.entryId, [...new Set(tags)]);
+    }
+  }
 
   const entryDtos = entryRows.map((entry) =>
     mapEntry(
       entry,
       mediaByEntry.get(entry.id) ?? [],
       ratingsByEntry.get(entry.id) ?? null,
-      guidanceByEntry.get(entry.id) ?? null
+      guidanceByEntry.get(entry.id) ?? null,
+      itineraryIdsByEntry.get(entry.id) ?? [],
+      bookingTagsByEntry.get(entry.id) ?? []
     )
   );
 

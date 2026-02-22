@@ -11,6 +11,10 @@ import { useUploadQueue } from "../../../src/store/upload-queue";
 export default function WaybookScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [text, setText] = useState("");
+  const [planTitle, setPlanTitle] = useState("");
+  const [bookingTitle, setBookingTitle] = useState("");
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
   const enqueue = useUploadQueue((state) => state.enqueue);
   const queue = useUploadQueue((state) => state.queue);
   const dequeue = useUploadQueue((state) => state.dequeue);
@@ -18,6 +22,18 @@ export default function WaybookScreen() {
   const timeline = useQuery({
     queryKey: ["waybook", id],
     queryFn: () => mobileApi.getTimeline(id)
+  });
+  const planning = useQuery({
+    queryKey: ["planning", id],
+    queryFn: () => mobileApi.listPlanningItems(id)
+  });
+  const bookings = useQuery({
+    queryKey: ["bookings", id],
+    queryFn: () => mobileApi.listBookings(id)
+  });
+  const expenses = useQuery({
+    queryKey: ["expenses", id],
+    queryFn: () => mobileApi.listExpenses(id)
   });
 
   if (!id) return null;
@@ -122,6 +138,110 @@ export default function WaybookScreen() {
         >
           <Text style={{ color: "#0f172a", fontWeight: "700" }}>Sync queued uploads ({queue.length})</Text>
         </Pressable>
+      </View>
+
+      <View style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, gap: 8 }}>
+        <Text style={{ fontWeight: "700" }}>Plan</Text>
+        <TextInput
+          value={planTitle}
+          onChangeText={setPlanTitle}
+          placeholder="Add planning idea"
+          style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10 }}
+        />
+        <Pressable
+          style={{ backgroundColor: "#1f4a3b", borderRadius: 8, padding: 10 }}
+          onPress={async () => {
+            if (!planTitle.trim()) return;
+            await mobileApi.createPlanningItem(id, { title: planTitle.trim(), location: null });
+            setPlanTitle("");
+            await planning.refetch();
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Add idea</Text>
+        </Pressable>
+        {planning.data?.items.map((item) => (
+          <View key={item.id} style={{ borderWidth: 1, borderColor: "#f1f5f9", borderRadius: 8, padding: 8 }}>
+            <Text style={{ fontWeight: "600" }}>{item.title}</Text>
+            <Text style={{ color: "#64748b", fontSize: 12 }}>{item.status}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, gap: 8 }}>
+        <Text style={{ fontWeight: "700" }}>Bookings</Text>
+        <TextInput
+          value={bookingTitle}
+          onChangeText={setBookingTitle}
+          placeholder="Booking title"
+          style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10 }}
+        />
+        <Pressable
+          style={{ backgroundColor: "#1f4a3b", borderRadius: 8, padding: 10 }}
+          onPress={async () => {
+            if (!bookingTitle.trim()) return;
+            await mobileApi.createBooking(id, { title: bookingTitle.trim(), type: "activity" });
+            setBookingTitle("");
+            await bookings.refetch();
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Add booking</Text>
+        </Pressable>
+        {bookings.data?.items.map((item) => (
+          <View key={item.id} style={{ borderWidth: 1, borderColor: "#f1f5f9", borderRadius: 8, padding: 8 }}>
+            <Text style={{ fontWeight: "600" }}>{item.title}</Text>
+            <Text style={{ color: "#64748b", fontSize: 12 }}>
+              {item.type} · {item.bookingStatus}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, gap: 8 }}>
+        <Text style={{ fontWeight: "700" }}>Expenses</Text>
+        <TextInput
+          value={expenseTitle}
+          onChangeText={setExpenseTitle}
+          placeholder="Expense title"
+          style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10 }}
+        />
+        <TextInput
+          value={expenseAmount}
+          onChangeText={setExpenseAmount}
+          placeholder="Amount (USD)"
+          keyboardType="numeric"
+          style={{ borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, padding: 10 }}
+        />
+        <Pressable
+          style={{ backgroundColor: "#1f4a3b", borderRadius: 8, padding: 10 }}
+          onPress={async () => {
+            const amount = Number(expenseAmount);
+            const userId = timeline.data?.waybook.userId;
+            if (!expenseTitle.trim() || Number.isNaN(amount) || amount <= 0 || !userId) return;
+            await mobileApi.createExpense(id, {
+              title: expenseTitle.trim(),
+              paidByUserId: userId,
+              currency: "USD",
+              amountMinor: Math.round(amount * 100),
+              tripBaseCurrency: "USD",
+              tripBaseAmountMinor: Math.round(amount * 100),
+              incurredAt: new Date().toISOString(),
+              splits: []
+            });
+            setExpenseTitle("");
+            setExpenseAmount("");
+            await expenses.refetch();
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Add expense</Text>
+        </Pressable>
+        {expenses.data?.items.map((item) => (
+          <View key={item.id} style={{ borderWidth: 1, borderColor: "#f1f5f9", borderRadius: 8, padding: 8 }}>
+            <Text style={{ fontWeight: "600" }}>{item.title}</Text>
+            <Text style={{ color: "#64748b", fontSize: 12 }}>
+              {(item.amountMinor / 100).toFixed(2)} {item.currency}
+            </Text>
+          </View>
+        ))}
       </View>
 
       <Text style={{ fontSize: 18, fontWeight: "600" }}>Timeline</Text>

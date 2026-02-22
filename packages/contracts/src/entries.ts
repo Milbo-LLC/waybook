@@ -11,6 +11,8 @@ export const entryDtoSchema = z.object({
   textContent: z.string().max(5000).nullable(),
   location: optionalLocationSchema,
   media: z.array(mediaDtoSchema),
+  itineraryEventIds: z.array(idSchema).default([]),
+  bookingSummaryTags: z.array(z.string()).default([]),
   rating: entryRatingDtoSchema.nullable(),
   guidance: entryGuidanceDtoSchema.nullable(),
   createdAt: isoDateTimeSchema,

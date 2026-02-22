@@ -85,7 +85,9 @@ export const mapEntry = (
   row: EntryRow,
   media: MediaDTO[],
   rating: EntryRatingDTO | null = null,
-  guidance: EntryGuidanceDTO | null = null
+  guidance: EntryGuidanceDTO | null = null,
+  itineraryEventIds: string[] = [],
+  bookingSummaryTags: string[] = []
 ): EntryDTO => ({
   id: row.id,
   waybookId: row.waybookId,
@@ -101,6 +103,8 @@ export const mapEntry = (
         }
       : null,
   media,
+  itineraryEventIds,
+  bookingSummaryTags,
   rating,
   guidance,
   createdAt: row.createdAt.toISOString(),
