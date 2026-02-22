@@ -2,56 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { EditorContent, type Editor, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import TextAlign from "@tiptap/extension-text-align";
-import Link from "@tiptap/extension-link";
-import Underline from "@tiptap/extension-underline";
-import Highlight from "@tiptap/extension-highlight";
-import Subscript from "@tiptap/extension-subscript";
-import Superscript from "@tiptap/extension-superscript";
 import { PageShell } from "@/components/page-shell";
 import { EntryList } from "@/features/entries/entry-list";
 import { ShareLinkCard } from "@/features/share/share-link-card";
 import { apiClient } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/auth/logout-button";
-
-const ToolbarButton = ({
-  label,
-  onClick,
-  active = false,
-  disabled = false
-}: {
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-}) => (
-  <button
-    className={`rounded px-2 py-1 text-xs transition ${
-      active ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-    } disabled:cursor-not-allowed disabled:opacity-50`}
-    disabled={disabled}
-    onClick={onClick}
-    type="button"
-  >
-    {label}
-  </button>
-);
-
-const setLinkPrompt = (editor: Editor | null) => {
-  if (!editor) return;
-  const previousUrl = editor.getAttributes("link").href ?? "";
-  const url = window.prompt("Enter URL", previousUrl);
-  if (url === null) return;
-  if (!url) {
-    editor.chain().focus().unsetLink().run();
-    return;
-  }
-  editor.chain().focus().setLink({ href: url }).run();
-};
 
 export default function WaybookDetailPage() {
   const params = useParams<{ id: string }>();
@@ -67,29 +26,23 @@ export default function WaybookDetailPage() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDictating, setIsDictating] = useState(false);
   const [captureHtml, setCaptureHtml] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [dictationHint, setDictationHint] = useState<string | null>(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [savingSummary, setSavingSummary] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const keepListeningRef = useRef(false);
+
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: "What happened? What made this memorable?" }),
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Link.configure({
-        openOnClick: false,
-        defaultProtocol: "https"
-      }),
-      Underline,
-      Highlight.configure({ multicolor: true }),
-      Subscript,
-      Superscript
-    ],
+    extensions: [StarterKit, Placeholder.configure({ placeholder: "Write your memory here..." })],
     content: "",
     editorProps: {
       attributes: {
         class:
-          "prose prose-slate min-h-[140px] max-w-none rounded border border-slate-300 bg-white p-3 text-sm focus:outline-none"
+          "prose prose-slate min-h-[170px] max-w-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
       }
     },
     onUpdate({ editor }) {
@@ -129,8 +82,14 @@ export default function WaybookDetailPage() {
     void run();
   }, [router, waybookId]);
 
+  useEffect(() => {
+    const ctor = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    setSpeechSupported(Boolean(ctor));
+  }, []);
+
   useEffect(
     () => () => {
+      keepListeningRef.current = false;
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
@@ -167,46 +126,103 @@ export default function WaybookDetailPage() {
     await apiClient.completeUpload(upload.mediaId, crypto.randomUUID());
   };
 
-  const toggleDictation = () => {
-    const SpeechRecognitionCtor =
-      typeof window !== "undefined"
-        ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition)
-        : null;
+  const stopDictation = () => {
+    keepListeningRef.current = false;
+    setIsDictating(false);
+    setLiveTranscript("");
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+
+  const startDictation = () => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      setError("Speech recognition is not supported in this browser.");
+      setDictationHint("Speech-to-text is not supported in this mobile browser. Use your keyboard's mic as fallback.");
       return;
     }
 
-    if (isDictating && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsDictating(false);
-      return;
+    let recognition = recognitionRef.current;
+    if (!recognition) {
+      recognition = new SpeechRecognitionCtor();
+      recognitionRef.current = recognition;
     }
 
-    const recognition = new SpeechRecognitionCtor();
     recognition.lang = "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript ?? "";
-      if (transcript) {
-        editor?.chain().focus().insertContent(`${transcript} `).run();
+      let finalText = "";
+      let interim = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript ?? "";
+        if (event.results[i].isFinal) {
+          finalText += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+
+      if (finalText.trim()) {
+        editor?.chain().focus().insertContent(`${finalText.trim()} `).run();
+      }
+
+      setLiveTranscript(interim.trim());
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        keepListeningRef.current = false;
+        setIsDictating(false);
+        setDictationHint("Mic permission denied. Enable microphone access in browser settings.");
+        return;
+      }
+
+      if (event.error === "no-speech") {
+        setDictationHint("No speech detected. Keep talking; listening will continue.");
+      } else {
+        setDictationHint(`Speech recognition error: ${event.error}`);
       }
     };
 
-    recognition.onerror = () => {
-      setIsDictating(false);
-    };
     recognition.onend = () => {
-      setIsDictating(false);
+      if (keepListeningRef.current) {
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            // Some browsers throw if restarted too quickly; next onend cycle retries.
+          }
+        }, 250);
+      } else {
+        setIsDictating(false);
+        setLiveTranscript("");
+      }
     };
 
-    recognitionRef.current = recognition;
+    keepListeningRef.current = true;
     setIsDictating(true);
-    recognition.start();
+    setDictationHint(null);
+
+    try {
+      recognition.start();
+    } catch (err) {
+      keepListeningRef.current = false;
+      setIsDictating(false);
+      setDictationHint(err instanceof Error ? err.message : "Unable to start speech recognition.");
+    }
+  };
+
+  const toggleDictation = () => {
+    if (isDictating) {
+      stopDictation();
+      return;
+    }
+    startDictation();
   };
 
   return (
@@ -227,116 +243,45 @@ export default function WaybookDetailPage() {
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {waybookId ? <ShareLinkCard waybookId={waybookId} /> : null}
-      <section className="rounded-xl border bg-white p-4">
-        <h2 className="text-lg font-semibold">Quick capture</h2>
-        <p className="mt-1 text-sm text-slate-600">Write, speak, and attach media in one post flow.</p>
-        <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-2">
-          <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-            <ToolbarButton disabled={!editor?.can().undo()} label="Undo" onClick={() => editor?.chain().focus().undo().run()} />
-            <ToolbarButton disabled={!editor?.can().redo()} label="Redo" onClick={() => editor?.chain().focus().redo().run()} />
-            <select
-              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
-              onChange={(event) => {
-                if (!editor) return;
-                const value = event.target.value;
-                if (value === "p") editor.chain().focus().setParagraph().run();
-                if (value === "h1") editor.chain().focus().toggleHeading({ level: 1 }).run();
-                if (value === "h2") editor.chain().focus().toggleHeading({ level: 2 }).run();
-                if (value === "h3") editor.chain().focus().toggleHeading({ level: 3 }).run();
-              }}
-              value={
-                editor?.isActive("heading", { level: 1 })
-                  ? "h1"
-                  : editor?.isActive("heading", { level: 2 })
-                    ? "h2"
-                    : editor?.isActive("heading", { level: 3 })
-                      ? "h3"
-                      : "p"
-              }
-            >
-              <option value="p">Paragraph</option>
-              <option value="h1">Heading 1</option>
-              <option value="h2">Heading 2</option>
-              <option value="h3">Heading 3</option>
-            </select>
-            <ToolbarButton active={editor?.isActive("bold")} label="B" onClick={() => editor?.chain().focus().toggleBold().run()} />
-            <ToolbarButton active={editor?.isActive("italic")} label="I" onClick={() => editor?.chain().focus().toggleItalic().run()} />
-            <ToolbarButton active={editor?.isActive("strike")} label="S" onClick={() => editor?.chain().focus().toggleStrike().run()} />
-            <ToolbarButton
-              active={editor?.isActive("underline")}
-              label="U"
-              onClick={() => editor?.chain().focus().toggleUnderline().run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive("highlight")}
-              label="HL"
-              onClick={() => editor?.chain().focus().toggleHighlight().run()}
-            />
-            <ToolbarButton active={editor?.isActive("code")} label="Code" onClick={() => editor?.chain().focus().toggleCode().run()} />
-            <ToolbarButton
-              active={editor?.isActive("codeBlock")}
-              label="Code Block"
-              onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive("blockquote")}
-              label="Quote"
-              onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive("bulletList")}
-              label="• List"
-              onClick={() => editor?.chain().focus().toggleBulletList().run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive("orderedList")}
-              label="1. List"
-              onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-            />
-            <ToolbarButton label="HR" onClick={() => editor?.chain().focus().setHorizontalRule().run()} />
-            <ToolbarButton
-              active={editor?.isActive("subscript")}
-              label="x2"
-              onClick={() => editor?.chain().focus().toggleSubscript().run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive("superscript")}
-              label="x^2"
-              onClick={() => editor?.chain().focus().toggleSuperscript().run()}
-            />
-            <ToolbarButton active={editor?.isActive("link")} label="Link" onClick={() => setLinkPrompt(editor)} />
-            <ToolbarButton label="Unlink" onClick={() => editor?.chain().focus().unsetLink().run()} />
-            <ToolbarButton
-              active={editor?.isActive({ textAlign: "left" })}
-              label="Left"
-              onClick={() => editor?.chain().focus().setTextAlign("left").run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive({ textAlign: "center" })}
-              label="Center"
-              onClick={() => editor?.chain().focus().setTextAlign("center").run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive({ textAlign: "right" })}
-              label="Right"
-              onClick={() => editor?.chain().focus().setTextAlign("right").run()}
-            />
-            <ToolbarButton
-              active={editor?.isActive({ textAlign: "justify" })}
-              label="Justify"
-              onClick={() => editor?.chain().focus().setTextAlign("justify").run()}
-            />
-            <ToolbarButton label="Clear" onClick={() => editor?.chain().focus().unsetAllMarks().clearNodes().run()} />
-            <ToolbarButton label={isDictating ? "Stop speaking" : "Speak to write"} onClick={toggleDictation} />
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Quick capture</h2>
+            <p className="mt-1 text-sm text-slate-600">Write naturally. Add media. Save once.</p>
           </div>
-          <EditorContent editor={editor} />
+          <button
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              isDictating ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+            }`}
+            onClick={toggleDictation}
+            type="button"
+          >
+            {isDictating ? "Stop Listening" : "Speak to Write"}
+          </button>
         </div>
-        <div className="mt-3">
-          <label className="text-sm font-medium">Add photos/videos</label>
+
+        <div className="mt-4">
+          <EditorContent editor={editor} />
+          {isDictating ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Listening... {liveTranscript ? `"${liveTranscript}"` : "start talking"}
+            </p>
+          ) : null}
+          {!speechSupported ? (
+            <p className="mt-2 text-xs text-amber-700">
+              Speech-to-text is limited on mobile browsers. Use your keyboard microphone as fallback.
+            </p>
+          ) : null}
+          {dictationHint ? <p className="mt-2 text-xs text-slate-500">{dictationHint}</p> : null}
+        </div>
+
+        <div className="mt-4">
+          <label className="text-sm font-medium">Add media</label>
           <input
             ref={fileInputRef}
             accept="image/*,video/*,audio/*"
-            className="mt-2 block w-full text-sm"
+            className="mt-2 block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-sm"
             multiple
             onChange={(event) => {
               const files = Array.from(event.target.files ?? []);
@@ -350,9 +295,10 @@ export default function WaybookDetailPage() {
             </p>
           ) : null}
         </div>
-        <div className="mt-3 flex gap-2">
+
+        <div className="mt-4 flex gap-2">
           <button
-            className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
             disabled={savingQuickEntry || !canSaveCapture}
             onClick={async () => {
               if (!waybookId) return;
