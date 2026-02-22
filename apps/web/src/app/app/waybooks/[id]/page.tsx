@@ -7,10 +7,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { PageShell } from "@/components/page-shell";
 import { EntryList } from "@/features/entries/entry-list";
-import { ShareLinkCard } from "@/features/share/share-link-card";
 import { apiClient } from "@/lib/api";
-import { getSession } from "@/lib/auth";
-import { LogoutButton } from "@/components/auth/logout-button";
+import { getSession, signOut } from "@/lib/auth";
 
 type TabKey = "capture" | "timeline" | "members" | "settings";
 
@@ -30,7 +28,7 @@ export default function WaybookDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const waybookId = useMemo(() => params.id, [params.id]);
-  const shareSectionRef = useRef<HTMLDivElement | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +58,11 @@ export default function WaybookDetailPage() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<Array<{ email: string; role: "editor" | "viewer" }>>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -121,6 +124,16 @@ export default function WaybookDetailPage() {
   useEffect(() => {
     const ctor = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     setSpeechSupported(Boolean(ctor));
+  }, []);
+
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
   useEffect(
@@ -288,38 +301,60 @@ export default function WaybookDetailPage() {
 
   return (
     <PageShell>
-      <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-slate-50/95 px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <button className="text-xs text-slate-500 hover:text-slate-700" onClick={() => router.push("/")} type="button">
-              Trips / {timeline?.waybook.title ?? "Trip"}
+      <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        <div className="flex items-center justify-between">
+          <button className="text-sm font-semibold text-slate-900" onClick={() => router.push("/")} type="button">
+            Waybook
+          </button>
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              className="h-9 w-9 rounded-full bg-slate-100 text-sm font-semibold text-slate-700 ring-1 ring-slate-200"
+              onClick={() => setProfileOpen((open) => !open)}
+              type="button"
+            >
+              P
             </button>
+            {profileOpen ? (
+              <div className="absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                <button
+                  className="w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setActiveTab("settings");
+                    setProfileOpen(false);
+                  }}
+                  type="button"
+                >
+                  Trip settings
+                </button>
+                <button
+                  className="w-full rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                  onClick={async () => {
+                    await signOut();
+                    router.push("/login" as any);
+                  }}
+                  type="button"
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+            onClick={() => router.push("/")}
+            type="button"
+          >
+            ← Back
+          </button>
+          <div className="min-w-0">
             <h1 className="truncate text-xl font-semibold">{timeline?.waybook.title ?? "Waybook"}</h1>
             {timeline ? (
               <p className="text-xs text-slate-500">
                 {timeline.waybook.startDate} to {timeline.waybook.endDate}
               </p>
             ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
-              onClick={() => {
-                setActiveTab("settings");
-                setTimeout(() => shareSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-              }}
-              type="button"
-            >
-              Share
-            </button>
-            <button
-              className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
-              onClick={() => setActiveTab("settings")}
-              type="button"
-            >
-              Settings
-            </button>
-            <LogoutButton />
           </div>
         </div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -484,17 +519,56 @@ export default function WaybookDetailPage() {
       {activeTab === "members" ? (
         <section className="rounded-xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Members</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Member invites are next. This tab will support owner/editor/viewer roles and invite links.
-          </p>
+          <p className="mt-1 text-sm text-slate-600">Invite people by email so they can post to this trip.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_150px_auto]">
+            <input
+              className="w-full rounded border p-2 text-sm"
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder="friend@example.com"
+              type="email"
+              value={inviteEmail}
+            />
+            <select
+              className="rounded border p-2 text-sm"
+              onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
+              value={inviteRole}
+            >
+              <option value="editor">Editor</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button
+              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white"
+              onClick={() => {
+                if (!inviteEmail.trim()) {
+                  setInviteStatus("Enter an email to invite.");
+                  return;
+                }
+                setPendingInvites((current) => [...current, { email: inviteEmail.trim(), role: inviteRole }]);
+                setInviteEmail("");
+                setInviteRole("editor");
+                setInviteStatus("Invite queued. Backend invite flow is next.");
+              }}
+              type="button"
+            >
+              Add member
+            </button>
+          </div>
+          {inviteStatus ? <p className="mt-2 text-xs text-slate-500">{inviteStatus}</p> : null}
+          {pendingInvites.length ? (
+            <div className="mt-4 space-y-2">
+              {pendingInvites.map((invite) => (
+                <div key={`${invite.email}-${invite.role}`} className="flex items-center justify-between rounded border p-2 text-sm">
+                  <span>{invite.email}</span>
+                  <span className="text-xs text-slate-500">{invite.role}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
       {activeTab === "settings" ? (
         <section className="space-y-4">
-          <div ref={shareSectionRef}>
-            {waybookId ? <ShareLinkCard waybookId={waybookId} /> : null}
-          </div>
           <div className="rounded-xl border bg-white p-4">
             <h2 className="text-lg font-semibold">Trip Settings</h2>
             <p className="mt-1 text-sm text-slate-600">Edit trip details and visibility.</p>
