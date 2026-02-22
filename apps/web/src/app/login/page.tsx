@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { startGoogleSignIn } from "@/lib/auth";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [safeNext, setSafeNext] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextPath = new URLSearchParams(window.location.search).get("next");
+    setSafeNext(nextPath && nextPath.startsWith("/") ? nextPath : null);
+  }, []);
 
   return (
     <PageShell>
@@ -38,7 +44,10 @@ export default function LoginPage() {
         {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
         <p className="mt-4 text-sm text-slate-600">
-          New here? <Link href={"/signup" as any} className="text-brand-700">Sign up with Google</Link>
+          New here?{" "}
+          <Link href={(safeNext ? `/signup?next=${encodeURIComponent(safeNext)}` : "/signup") as any} className="text-brand-700">
+            Sign up with Google
+          </Link>
         </p>
       </div>
     </PageShell>

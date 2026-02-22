@@ -12,6 +12,7 @@ import type {
   EntryGuidanceDTO,
   EntryRatingDTO,
   ListEntriesResponse,
+  ListPendingInvitesResponse,
   ListMembersResponse,
   ListWaybooksResponse,
   PlaybookResponse,
@@ -89,6 +90,18 @@ export class WaybookApiClient {
 
   listWaybookMembers(waybookId: string) {
     return this.request<ListMembersResponse>(`/v1/waybooks/${waybookId}/members`);
+  }
+
+  listPendingInvites() {
+    return this.request<ListPendingInvitesResponse>("/v1/me/invites");
+  }
+
+  acceptPendingInvite(inviteId: string) {
+    return this.request<{ success: true; waybookId: string }>(`/v1/me/invites/${inviteId}/accept`, { method: "POST", body: {} });
+  }
+
+  declinePendingInvite(inviteId: string) {
+    return this.request<{ success: true }>(`/v1/me/invites/${inviteId}`, { method: "DELETE" });
   }
 
   createWaybookInvite(waybookId: string, input: CreateInviteInput) {

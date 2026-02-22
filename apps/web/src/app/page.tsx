@@ -13,6 +13,7 @@ export default function MarketingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [waybooks, setWaybooks] = useState<Awaited<ReturnType<typeof apiClient.listWaybooks>>["items"]>([]);
+  const [pendingInvites, setPendingInvites] = useState<Awaited<ReturnType<typeof apiClient.listPendingInvites>>["items"]>([]);
 
   useEffect(() => {
     let active = true;
@@ -24,9 +25,10 @@ export default function MarketingPage() {
         }
 
         if (nextSession) {
-          const response = await apiClient.listWaybooks();
+          const [response, invitesResponse] = await Promise.all([apiClient.listWaybooks(), apiClient.listPendingInvites()]);
           if (active) {
             setWaybooks(response.items);
+            setPendingInvites(invitesResponse.items);
           }
         }
       } catch (err) {
@@ -71,6 +73,50 @@ export default function MarketingPage() {
             </div>
           </header>
           <div className="grid gap-3">
+            {pendingInvites.length ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <h2 className="text-base font-semibold">Pending Invites</h2>
+                <div className="mt-3 space-y-2">
+                  {pendingInvites.map((invite) => (
+                    <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 rounded border p-3 text-sm">
+                      <div>
+                        <p className="font-medium">{invite.waybookTitle}</p>
+                        <p className="text-xs text-slate-500">
+                          Invited by {invite.invitedBy.name || invite.invitedBy.email || "Waybook user"} as {invite.role}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="rounded bg-brand-700 px-3 py-1.5 text-xs font-medium text-white"
+                          onClick={async () => {
+                            await apiClient.acceptPendingInvite(invite.id);
+                            const [response, invitesResponse] = await Promise.all([
+                              apiClient.listWaybooks(),
+                              apiClient.listPendingInvites()
+                            ]);
+                            setWaybooks(response.items);
+                            setPendingInvites(invitesResponse.items);
+                          }}
+                          type="button"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className="rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600"
+                          onClick={async () => {
+                            await apiClient.declinePendingInvite(invite.id);
+                            setPendingInvites((current) => current.filter((item) => item.id !== invite.id));
+                          }}
+                          type="button"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             {waybooks.map((waybook) => (
               <WaybookCard key={waybook.id} waybook={waybook} />
             ))}

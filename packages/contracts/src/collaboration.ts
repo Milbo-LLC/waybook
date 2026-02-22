@@ -60,3 +60,23 @@ export const updateMemberRoleInputSchema = z.object({
   role: z.enum(["editor", "viewer"])
 });
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInputSchema>;
+
+export const pendingInviteDtoSchema = z.object({
+  id: idSchema,
+  waybookId: idSchema,
+  waybookTitle: z.string().min(1),
+  role: waybookMemberRoleSchema,
+  invitedBy: z.object({
+    id: idSchema,
+    name: z.string().nullable(),
+    email: z.string().email().nullable()
+  }),
+  expiresAt: isoDateTimeSchema.nullable(),
+  createdAt: isoDateTimeSchema
+});
+export type PendingInviteDTO = z.infer<typeof pendingInviteDtoSchema>;
+
+export const listPendingInvitesResponseSchema = z.object({
+  items: z.array(pendingInviteDtoSchema)
+});
+export type ListPendingInvitesResponse = z.infer<typeof listPendingInvitesResponseSchema>;

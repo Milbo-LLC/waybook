@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { startGoogleSignIn } from "@/lib/auth";
 
 export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [safeNext, setSafeNext] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextPath = new URLSearchParams(window.location.search).get("next");
+    setSafeNext(nextPath && nextPath.startsWith("/") ? nextPath : null);
+  }, []);
 
   return (
     <PageShell>
@@ -22,7 +28,7 @@ export default function SignupPage() {
             setError(null);
             setSubmitting(true);
             try {
-              await startGoogleSignIn("/auth/callback");
+              await startGoogleSignIn(safeNext ?? "/auth/callback");
             } catch (err) {
               setError(err instanceof Error ? err.message : "Unable to start Google sign up");
               setSubmitting(false);
@@ -36,7 +42,10 @@ export default function SignupPage() {
         {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
         <p className="mt-4 text-sm text-slate-600">
-          Already have an account? <Link href={"/login" as any} className="text-brand-700">Sign in</Link>
+          Already have an account?{" "}
+          <Link href={(safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login") as any} className="text-brand-700">
+            Sign in
+          </Link>
         </p>
       </div>
     </PageShell>
