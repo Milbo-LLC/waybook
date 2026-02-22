@@ -1,5 +1,8 @@
 import type {
   AckPromptInput,
+  AcceptInviteResponse,
+  CreateInviteInput,
+  CreateInviteResponse,
   CreatePublicReactionInput,
   CreateEntryInput,
   CreateUploadUrlInput,
@@ -9,6 +12,7 @@ import type {
   EntryGuidanceDTO,
   EntryRatingDTO,
   ListEntriesResponse,
+  ListMembersResponse,
   ListWaybooksResponse,
   PlaybookResponse,
   PromptDTO,
@@ -80,6 +84,18 @@ export class WaybookApiClient {
 
   updateWaybook(waybookId: string, input: UpdateWaybookInput) {
     return this.request<WaybookDTO>(`/v1/waybooks/${waybookId}`, { method: "PATCH", body: input });
+  }
+
+  listWaybookMembers(waybookId: string) {
+    return this.request<ListMembersResponse>(`/v1/waybooks/${waybookId}/members`);
+  }
+
+  createWaybookInvite(waybookId: string, input: CreateInviteInput) {
+    return this.request<CreateInviteResponse>(`/v1/waybooks/${waybookId}/invites`, { method: "POST", body: input });
+  }
+
+  acceptWaybookInvite(token: string) {
+    return this.request<AcceptInviteResponse>(`/v1/invites/${token}/accept`, { method: "POST", body: {} });
   }
 
   listEntries(waybookId: string) {

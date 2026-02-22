@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  createInviteInputSchema,
   createPublicReactionInputSchema,
   createWaybookInputSchema,
   type DaySummaryDTO,
@@ -10,9 +11,10 @@ import {
   waybookDtoSchema
 } from "@waybook/contracts";
 import { schema } from "@waybook/db";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { getWaybookAccess, hasMinimumRole } from "../lib/access.js";
 import { mapDaySummary, mapEntry, mapEntryGuidance, mapEntryRating, mapMedia, mapPublicReaction, mapWaybook } from "../lib/mappers.js";
 import { createPublicSlug, createShareToken, hashToken } from "../lib/security.js";
 import { optionalAuthMiddleware, requireAuthMiddleware } from "../middleware/require-auth.js";
@@ -96,6 +98,12 @@ waybookRoutes.post("/waybooks", requireAuthMiddleware, zValidator("json", create
     .returning();
 
   if (!created) return c.json({ error: "create_failed" }, 500);
+  await db.insert(schema.waybookMembers).values({
+    waybookId: created.id,
+    userId: user.id,
+    role: "owner",
+    invitedBy: user.id
+  });
   return c.json(waybookDtoSchema.parse(mapWaybook(created)), 201);
 });
 
@@ -104,13 +112,21 @@ waybookRoutes.get("/waybooks", requireAuthMiddleware, zValidator("query", listQu
   const db = c.get("db");
   const { cursor, limit } = c.req.valid("query");
   const cursorDate = cursor ? new Date(cursor) : null;
+  const memberships = await db
+    .select({ waybookId: schema.waybookMembers.waybookId })
+    .from(schema.waybookMembers)
+    .where(eq(schema.waybookMembers.userId, user.id));
+  const memberWaybookIds = memberships.map((row) => row.waybookId);
 
   const rows = await db
     .select()
     .from(schema.waybooks)
     .where(
       and(
-        eq(schema.waybooks.userId, user.id),
+        or(
+          eq(schema.waybooks.userId, user.id),
+          memberWaybookIds.length ? inArray(schema.waybooks.id, memberWaybookIds) : undefined
+        ),
         cursorDate ? lt(schema.waybooks.createdAt, cursorDate) : undefined
       )
     )
@@ -129,14 +145,10 @@ waybookRoutes.get("/waybooks/:waybookId", requireAuthMiddleware, async (c) => {
   const user = c.get("user");
   const waybookId = c.req.param("waybookId");
 
-  const [waybook] = await db
-    .select()
-    .from(schema.waybooks)
-    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
+  const access = await getWaybookAccess(db, waybookId, user.id);
 
-  if (!waybook) return c.json({ error: "not_found" }, 404);
-  return c.json(mapWaybook(waybook));
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
+  return c.json(mapWaybook(access.waybook));
 });
 
 waybookRoutes.patch(
@@ -166,10 +178,13 @@ waybookRoutes.patch(
       updates.publicSlug = null;
     }
 
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
     const [updated] = await db
       .update(schema.waybooks)
       .set(updates)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
+      .where(eq(schema.waybooks.id, waybookId))
       .returning();
 
     if (!updated) return c.json({ error: "not_found" }, 404);
@@ -181,10 +196,12 @@ waybookRoutes.delete("/waybooks/:waybookId", requireAuthMiddleware, async (c) =>
   const db = c.get("db");
   const user = c.get("user");
   const waybookId = c.req.param("waybookId");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
 
   const [deleted] = await db
     .delete(schema.waybooks)
-    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
+    .where(eq(schema.waybooks.id, waybookId))
     .returning({ id: schema.waybooks.id });
 
   if (!deleted) return c.json({ error: "not_found" }, 404);
@@ -201,13 +218,9 @@ waybookRoutes.post(
     const waybookId = c.req.param("waybookId");
     const payload = c.req.valid("json");
 
-    const [waybook] = await db
-      .select()
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
+    const access = await getWaybookAccess(db, waybookId, user.id);
 
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
 
     const token = createShareToken();
     const tokenHash = hashToken(token);
@@ -243,13 +256,8 @@ waybookRoutes.delete(
     const waybookId = c.req.param("waybookId");
     const linkId = c.req.param("linkId");
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
 
     await db
       .update(schema.waybookShareLinks)
@@ -260,18 +268,181 @@ waybookRoutes.delete(
   }
 );
 
+waybookRoutes.get("/waybooks/:waybookId/members", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
+
+  const members = await db
+    .select({
+      id: schema.waybookMembers.id,
+      waybookId: schema.waybookMembers.waybookId,
+      userId: schema.waybookMembers.userId,
+      role: schema.waybookMembers.role,
+      invitedBy: schema.waybookMembers.invitedBy,
+      createdAt: schema.waybookMembers.createdAt,
+      email: schema.users.email,
+      name: schema.users.name,
+      image: schema.users.image
+    })
+    .from(schema.waybookMembers)
+    .innerJoin(schema.users, eq(schema.users.id, schema.waybookMembers.userId))
+    .where(eq(schema.waybookMembers.waybookId, waybookId))
+    .orderBy(desc(schema.waybookMembers.createdAt));
+
+  const invites = await db
+    .select()
+    .from(schema.waybookInvites)
+    .where(and(eq(schema.waybookInvites.waybookId, waybookId), isNull(schema.waybookInvites.acceptedAt)))
+    .orderBy(desc(schema.waybookInvites.createdAt));
+
+  return c.json({
+    accessRole: access.role,
+    members: members.map((member) => ({
+      id: member.id,
+      waybookId: member.waybookId,
+      userId: member.userId,
+      role: member.role,
+      invitedBy: member.invitedBy,
+      createdAt: member.createdAt.toISOString(),
+      user: {
+        email: member.email,
+        name: member.name,
+        image: member.image
+      }
+    })),
+    invites: invites.map((invite) => ({
+      id: invite.id,
+      waybookId: invite.waybookId,
+      email: invite.email,
+      role: invite.role,
+      invitedBy: invite.invitedBy,
+      expiresAt: invite.expiresAt?.toISOString() ?? null,
+      acceptedAt: invite.acceptedAt?.toISOString() ?? null,
+      createdAt: invite.createdAt.toISOString()
+    }))
+  });
+});
+
+waybookRoutes.post(
+  "/waybooks/:waybookId/invites",
+  requireAuthMiddleware,
+  zValidator("json", createInviteInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const payload = c.req.valid("json");
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+    const email = payload.email.trim().toLowerCase();
+    const [existingUser] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email)).limit(1);
+    if (existingUser) {
+      const [existingMember] = await db
+        .select({ id: schema.waybookMembers.id })
+        .from(schema.waybookMembers)
+        .where(and(eq(schema.waybookMembers.waybookId, waybookId), eq(schema.waybookMembers.userId, existingUser.id)))
+        .limit(1);
+      if (existingMember) return c.json({ error: "already_member" }, 409);
+    }
+
+    const token = createShareToken();
+    const tokenHash = hashToken(token);
+
+    const [invite] = await db
+      .insert(schema.waybookInvites)
+      .values({
+        waybookId,
+        email,
+        tokenHash,
+        role: payload.role,
+        invitedBy: user.id,
+        expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null
+      })
+      .onConflictDoUpdate({
+        target: [schema.waybookInvites.tokenHash],
+        set: {
+          email,
+          role: payload.role,
+          invitedBy: user.id,
+          expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null,
+          acceptedAt: null
+        }
+      })
+      .returning();
+
+    if (!invite) return c.json({ error: "create_failed" }, 500);
+
+    const acceptUrl = `${new URL(c.req.url).origin}/invite/${token}`;
+    return c.json(
+      {
+        invite: {
+          id: invite.id,
+          waybookId: invite.waybookId,
+          email: invite.email,
+          role: invite.role,
+          invitedBy: invite.invitedBy,
+          expiresAt: invite.expiresAt?.toISOString() ?? null,
+          acceptedAt: invite.acceptedAt?.toISOString() ?? null,
+          createdAt: invite.createdAt.toISOString()
+        },
+        token,
+        acceptUrl
+      },
+      201
+    );
+  }
+);
+
+waybookRoutes.post("/invites/:token/accept", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const token = c.req.param("token");
+  const tokenHash = hashToken(token);
+
+  const [invite] = await db
+    .select()
+    .from(schema.waybookInvites)
+    .where(eq(schema.waybookInvites.tokenHash, tokenHash))
+    .limit(1);
+
+  if (!invite) return c.json({ error: "not_found" }, 404);
+  if (invite.acceptedAt) return c.json({ error: "already_accepted" }, 409);
+  if (invite.expiresAt && invite.expiresAt < new Date()) return c.json({ error: "expired" }, 410);
+  if (!user.email || user.email.toLowerCase() !== invite.email.toLowerCase()) {
+    return c.json({ error: "email_mismatch" }, 403);
+  }
+
+  await db
+    .insert(schema.waybookMembers)
+    .values({
+      waybookId: invite.waybookId,
+      userId: user.id,
+      role: invite.role,
+      invitedBy: invite.invitedBy
+    })
+    .onConflictDoUpdate({
+      target: [schema.waybookMembers.waybookId, schema.waybookMembers.userId],
+      set: { role: invite.role, invitedBy: invite.invitedBy }
+    });
+
+  await db
+    .update(schema.waybookInvites)
+    .set({ acceptedAt: new Date() })
+    .where(eq(schema.waybookInvites.id, invite.id));
+
+  return c.json({ success: true, waybookId: invite.waybookId });
+});
+
 waybookRoutes.get("/waybooks/:waybookId/timeline", requireAuthMiddleware, async (c) => {
   const db = c.get("db");
   const user = c.get("user");
   const waybookId = c.req.param("waybookId");
-
-  const [waybook] = await db
-    .select()
-    .from(schema.waybooks)
-    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!waybook) return c.json({ error: "not_found" }, 404);
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
   const entryRows = await db
     .select()
@@ -320,21 +491,15 @@ waybookRoutes.get("/waybooks/:waybookId/timeline", requireAuthMiddleware, async 
     .sort(([a], [b]) => (a > b ? -1 : 1))
     .map(([date, entries]) => ({ date, entries, summary: summariesByDate.get(date) ?? null }));
 
-  return c.json({ waybook: mapWaybook(waybook), days });
+  return c.json({ waybook: mapWaybook(access.waybook), accessRole: access.role, days });
 });
 
 waybookRoutes.get("/waybooks/:waybookId/day-summaries", requireAuthMiddleware, async (c) => {
   const db = c.get("db");
   const user = c.get("user");
   const waybookId = c.req.param("waybookId");
-
-  const [waybook] = await db
-    .select({ id: schema.waybooks.id })
-    .from(schema.waybooks)
-    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!waybook) return c.json({ error: "not_found" }, 404);
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
   const summaries = await db
     .select()
@@ -355,13 +520,8 @@ waybookRoutes.post(
     const waybookId = c.req.param("waybookId");
     const payload = c.req.valid("json");
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [summary] = await db
       .insert(schema.waybookDaySummaries)
@@ -403,13 +563,8 @@ waybookRoutes.patch(
     const date = c.req.param("date");
     const payload = c.req.valid("json");
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [updated] = await db
       .update(schema.waybookDaySummaries)
@@ -433,13 +588,8 @@ waybookRoutes.get("/waybooks/:waybookId/itinerary-items", requireAuthMiddleware,
   const user = c.get("user");
   const waybookId = c.req.param("waybookId");
 
-  const [waybook] = await db
-    .select({ id: schema.waybooks.id })
-    .from(schema.waybooks)
-    .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!waybook) return c.json({ error: "not_found" }, 404);
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
   const items = await db
     .select()
@@ -477,13 +627,8 @@ waybookRoutes.post(
     const waybookId = c.req.param("waybookId");
     const payload = c.req.valid("json");
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [created] = await db
       .insert(schema.itineraryItems)
@@ -524,6 +669,10 @@ waybookRoutes.post(
 
 waybookRoutes.get("/waybooks/:waybookId/map", requireAuthMiddleware, async (c) => {
   const waybookId = c.req.param("waybookId");
+  const db = c.get("db");
+  const user = c.get("user");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
   return c.json(
     {
       error: "not_implemented",
@@ -535,6 +684,10 @@ waybookRoutes.get("/waybooks/:waybookId/map", requireAuthMiddleware, async (c) =
 
 waybookRoutes.post("/waybooks/:waybookId/ai-summary", requireAuthMiddleware, async (c) => {
   const waybookId = c.req.param("waybookId");
+  const db = c.get("db");
+  const user = c.get("user");
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
   return c.json(
     {
       error: "not_implemented",

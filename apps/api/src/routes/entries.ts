@@ -9,6 +9,7 @@ import { schema } from "@waybook/db";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { getEntryAccess, getWaybookAccess, hasMinimumRole } from "../lib/access.js";
 import { claimIdempotencyKey } from "../lib/idempotency.js";
 import { mapEntry, mapEntryGuidance, mapEntryRating, mapMedia } from "../lib/mappers.js";
 import { requireAuthMiddleware } from "../middleware/require-auth.js";
@@ -49,13 +50,8 @@ entryRoutes.post(
     const waybookId = c.req.param("waybookId");
     const payload = c.req.valid("json");
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const claimed = await claimIdempotencyKey(`entry:${waybookId}`, payload.idempotencyKey);
     if (!claimed) return c.json({ error: "idempotency_conflict" }, 409);
@@ -97,13 +93,8 @@ entryRoutes.get(
     const { cursor, limit } = c.req.valid("query");
     const cursorDate = cursor ? new Date(cursor) : null;
 
-    const [waybook] = await db
-      .select({ id: schema.waybooks.id })
-      .from(schema.waybooks)
-      .where(and(eq(schema.waybooks.id, waybookId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!waybook) return c.json({ error: "not_found" }, 404);
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
     const entryRows = await db
       .select()
@@ -161,26 +152,10 @@ entryRoutes.get("/entries/:entryId", requireAuthMiddleware, async (c) => {
   const user = c.get("user");
   const entryId = c.req.param("entryId");
 
-  const [entry] = await db
-    .select({
-      id: schema.entries.id,
-      waybookId: schema.entries.waybookId,
-      authorUserId: schema.entries.authorUserId,
-      capturedAt: schema.entries.capturedAt,
-      textContent: schema.entries.textContent,
-      lat: schema.entries.lat,
-      lng: schema.entries.lng,
-      placeName: schema.entries.placeName,
-      createdAt: schema.entries.createdAt,
-      updatedAt: schema.entries.updatedAt,
-      waybookOwnerId: schema.waybooks.userId
-    })
-    .from(schema.entries)
-    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-    .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
+  const entryAccess = await getEntryAccess(db, entryId, user.id);
+  const entry = entryAccess?.entry ?? null;
 
-  if (!entry) return c.json({ error: "not_found" }, 404);
+  if (!entryAccess || !entry || !hasMinimumRole(entryAccess.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
   const mediaRows = await db
     .select()
@@ -230,14 +205,8 @@ entryRoutes.patch(
     const entryId = c.req.param("entryId");
     const payload = c.req.valid("json");
 
-    const [owned] = await db
-      .select({ id: schema.entries.id })
-      .from(schema.entries)
-      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!owned) return c.json({ error: "not_found" }, 404);
+    const entryAccess = await getEntryAccess(db, entryId, user.id);
+    if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [updated] = await db
       .update(schema.entries)
@@ -287,14 +256,8 @@ entryRoutes.delete("/entries/:entryId", requireAuthMiddleware, async (c) => {
   const user = c.get("user");
   const entryId = c.req.param("entryId");
 
-  const [owned] = await db
-    .select({ id: schema.entries.id })
-    .from(schema.entries)
-    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-    .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!owned) return c.json({ error: "not_found" }, 404);
+  const entryAccess = await getEntryAccess(db, entryId, user.id);
+  if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
   await db.delete(schema.entries).where(eq(schema.entries.id, entryId));
 
@@ -311,14 +274,8 @@ entryRoutes.post(
     const entryId = c.req.param("entryId");
     const payload = c.req.valid("json");
 
-    const [owned] = await db
-      .select({ id: schema.entries.id })
-      .from(schema.entries)
-      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!owned) return c.json({ error: "not_found" }, 404);
+    const entryAccess = await getEntryAccess(db, entryId, user.id);
+    if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [created] = await db
       .insert(schema.entryExperienceRatings)
@@ -384,14 +341,8 @@ entryRoutes.post(
     const entryId = c.req.param("entryId");
     const payload = c.req.valid("json");
 
-    const [owned] = await db
-      .select({ id: schema.entries.id })
-      .from(schema.entries)
-      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!owned) return c.json({ error: "not_found" }, 404);
+    const entryAccess = await getEntryAccess(db, entryId, user.id);
+    if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [created] = await db
       .insert(schema.entryGuidance)
@@ -435,14 +386,8 @@ entryRoutes.patch(
     const entryId = c.req.param("entryId");
     const payload = c.req.valid("json");
 
-    const [owned] = await db
-      .select({ id: schema.entries.id })
-      .from(schema.entries)
-      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!owned) return c.json({ error: "not_found" }, 404);
+    const entryAccess = await getEntryAccess(db, entryId, user.id);
+    if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
     const [updated] = await db
       .update(schema.entryGuidance)

@@ -38,3 +38,6 @@ export const promptTypeSchema = z.enum([
   "day_reflection"
 ]);
 export type PromptType = z.infer<typeof promptTypeSchema>;
+
+export const waybookMemberRoleSchema = z.enum(["owner", "editor", "viewer"]);
+export type WaybookMemberRole = z.infer<typeof waybookMemberRoleSchema>;

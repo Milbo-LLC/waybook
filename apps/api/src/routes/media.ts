@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { zValidator } from "@hono/zod-validator";
 import { completeUploadInputSchema, createUploadUrlInputSchema } from "@waybook/contracts";
 import { schema } from "@waybook/db";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { getEntryAccess, getMediaAccess, hasMinimumRole } from "../lib/access.js";
 import { claimIdempotencyKey } from "../lib/idempotency.js";
 import { mapMedia } from "../lib/mappers.js";
 import { mediaProcessingQueue } from "../lib/queue.js";
@@ -55,18 +56,9 @@ mediaRoutes.post(
       return c.json({ error: "video_too_long", maxDurationMs: maxVideoDurationMs }, 400);
     }
 
-    const [entry] = await db
-      .select({
-        id: schema.entries.id,
-        waybookId: schema.entries.waybookId,
-        waybookOwnerId: schema.waybooks.userId
-      })
-      .from(schema.entries)
-      .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-      .where(and(eq(schema.entries.id, entryId), eq(schema.waybooks.userId, user.id)))
-      .limit(1);
-
-    if (!entry) return c.json({ error: "not_found" }, 404);
+    const entryAccess = await getEntryAccess(db, entryId, user.id);
+    if (!entryAccess || !hasMinimumRole(entryAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
+    const entry = entryAccess.entry;
 
     const claimed = await claimIdempotencyKey(`upload:${entryId}`, payload.idempotencyKey);
     if (!claimed) return c.json({ error: "idempotency_conflict" }, 409);
@@ -118,19 +110,8 @@ mediaRoutes.post("/media/:mediaId/complete", requireAuthMiddleware, zValidator("
   const claimed = await claimIdempotencyKey(`complete:${mediaId}`, payload.idempotencyKey);
   if (!claimed) return c.json({ error: "idempotency_conflict" }, 409);
 
-  const [media] = await db
-    .select({
-      id: schema.mediaAssets.id,
-      entryId: schema.mediaAssets.entryId,
-      waybookOwnerId: schema.waybooks.userId
-    })
-    .from(schema.mediaAssets)
-    .innerJoin(schema.entries, eq(schema.mediaAssets.entryId, schema.entries.id))
-    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-    .where(and(eq(schema.mediaAssets.id, mediaId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!media) return c.json({ error: "not_found" }, 404);
+  const mediaAccess = await getMediaAccess(db, mediaId, user.id);
+  if (!mediaAccess || !hasMinimumRole(mediaAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
 
   await db
     .update(schema.mediaAssets)
@@ -153,33 +134,9 @@ mediaRoutes.get("/media/:mediaId", requireAuthMiddleware, async (c) => {
   const user = c.get("user");
   const mediaId = c.req.param("mediaId");
 
-  const [row] = await db
-    .select({
-      id: schema.mediaAssets.id,
-      entryId: schema.mediaAssets.entryId,
-      type: schema.mediaAssets.type,
-      status: schema.mediaAssets.status,
-      mimeType: schema.mediaAssets.mimeType,
-      bytes: schema.mediaAssets.bytes,
-      width: schema.mediaAssets.width,
-      height: schema.mediaAssets.height,
-      durationMs: schema.mediaAssets.durationMs,
-      thumbnailKey: schema.mediaAssets.thumbnailKey,
-      transcodeStatus: schema.mediaAssets.transcodeStatus,
-      playbackDurationMs: schema.mediaAssets.playbackDurationMs,
-      aspectRatio: schema.mediaAssets.aspectRatio,
-      storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
-      storageKeyDisplay: schema.mediaAssets.storageKeyDisplay,
-      createdAt: schema.mediaAssets.createdAt,
-      waybookOwnerId: schema.waybooks.userId
-    })
-    .from(schema.mediaAssets)
-    .innerJoin(schema.entries, eq(schema.mediaAssets.entryId, schema.entries.id))
-    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-    .where(and(eq(schema.mediaAssets.id, mediaId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
-
-  if (!row) return c.json({ error: "not_found" }, 404);
+  const mediaAccess = await getMediaAccess(db, mediaId, user.id);
+  if (!mediaAccess || !hasMinimumRole(mediaAccess.role, "viewer")) return c.json({ error: "not_found" }, 404);
+  const row = mediaAccess.media;
 
   return c.json(mapMedia(row));
 });
@@ -189,22 +146,11 @@ mediaRoutes.delete("/media/:mediaId", requireAuthMiddleware, async (c) => {
   const user = c.get("user");
   const mediaId = c.req.param("mediaId");
 
-  const [row] = await db
-    .select({
-      id: schema.mediaAssets.id,
-      storageKeyOriginal: schema.mediaAssets.storageKeyOriginal,
-      storageKeyDisplay: schema.mediaAssets.storageKeyDisplay,
-      thumbnailKey: schema.mediaAssets.thumbnailKey
-    })
-    .from(schema.mediaAssets)
-    .innerJoin(schema.entries, eq(schema.mediaAssets.entryId, schema.entries.id))
-    .innerJoin(schema.waybooks, eq(schema.entries.waybookId, schema.waybooks.id))
-    .where(and(eq(schema.mediaAssets.id, mediaId), eq(schema.waybooks.userId, user.id)))
-    .limit(1);
+  const mediaAccess = await getMediaAccess(db, mediaId, user.id);
+  if (!mediaAccess || !hasMinimumRole(mediaAccess.role, "editor")) return c.json({ error: "not_found" }, 404);
+  const row = mediaAccess.media;
 
-  if (!row) return c.json({ error: "not_found" }, 404);
-
-  await db.delete(schema.mediaAssets).where(eq(schema.mediaAssets.id, mediaId));
+  await db.delete(schema.mediaAssets).where(eq(schema.mediaAssets.id, row.id));
 
   await Promise.allSettled([
     deleteObjectIfExists(row.storageKeyOriginal),

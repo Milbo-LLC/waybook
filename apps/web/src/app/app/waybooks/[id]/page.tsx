@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import type { ListMembersResponse } from "@waybook/contracts";
 import { PageShell } from "@/components/page-shell";
 import { EntryList } from "@/features/entries/entry-list";
 import { apiClient } from "@/lib/api";
@@ -60,10 +61,10 @@ export default function WaybookDetailPage() {
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [membersData, setMembersData] = useState<ListMembersResponse | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
-  const [pendingInvites, setPendingInvites] = useState<Array<{ email: string; role: "editor" | "viewer" }>>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -85,12 +86,14 @@ export default function WaybookDetailPage() {
 
   const loadWaybook = async () => {
     if (!waybookId) return;
-    const [timelineResponse, entriesResponse] = await Promise.all([
+    const [timelineResponse, entriesResponse, membersResponse] = await Promise.all([
       apiClient.getTimeline(waybookId),
-      apiClient.listEntries(waybookId)
+      apiClient.listEntries(waybookId),
+      apiClient.listWaybookMembers(waybookId)
     ]);
     setTimeline(timelineResponse);
     setEntries(entriesResponse.items);
+    setMembersData(membersResponse);
     setSettingsDraft({
       title: timelineResponse.waybook.title,
       description: timelineResponse.waybook.description ?? "",
@@ -164,6 +167,9 @@ export default function WaybookDetailPage() {
   const todaySummary = timeline?.days.find((day) => day.date === todayDate)?.summary ?? null;
   const captureText = editor?.getText().trim() ?? "";
   const canSaveCapture = Boolean(captureText) || selectedFiles.length > 0;
+  const accessRole = timeline?.accessRole ?? "viewer";
+  const canEditTripContent = accessRole === "owner" || accessRole === "editor";
+  const canManageTrip = accessRole === "owner";
 
   const uploadFileToEntry = async (entryId: string, file: File) => {
     const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "photo";
@@ -466,7 +472,7 @@ export default function WaybookDetailPage() {
             <div className="mt-4 flex gap-2">
               <button
                 className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={savingQuickEntry || !canSaveCapture}
+                disabled={savingQuickEntry || !canSaveCapture || !canEditTripContent}
                 onClick={async () => {
                   if (!waybookId) return;
                   setSavingQuickEntry(true);
@@ -500,7 +506,7 @@ export default function WaybookDetailPage() {
                 }}
                 type="button"
               >
-                {savingQuickEntry ? "Saving..." : "Save post"}
+                {!canEditTripContent ? "Read only" : savingQuickEntry ? "Saving..." : "Save post"}
               </button>
             </div>
             {captureStatus ? <p className="mt-2 text-xs text-slate-500">{captureStatus}</p> : null}
@@ -519,7 +525,7 @@ export default function WaybookDetailPage() {
             <div className="mt-3 flex gap-2">
               <button
                 className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={savingSummary}
+                disabled={savingSummary || !canEditTripContent}
                 onClick={async () => {
                   if (!waybookId) return;
                   setSavingSummary(true);
@@ -542,7 +548,7 @@ export default function WaybookDetailPage() {
                 }}
                 type="button"
               >
-                {savingSummary ? "Saving..." : "Save reflection"}
+                {!canEditTripContent ? "Read only" : savingSummary ? "Saving..." : "Save reflection"}
               </button>
             </div>
           </section>
@@ -577,16 +583,30 @@ export default function WaybookDetailPage() {
               <option value="viewer">Viewer</option>
             </select>
             <button
-              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white"
-              onClick={() => {
+              className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+              disabled={!canManageTrip}
+              onClick={async () => {
+                if (!canManageTrip) {
+                  setInviteStatus("Only trip owners can invite members.");
+                  return;
+                }
                 if (!inviteEmail.trim()) {
                   setInviteStatus("Enter an email to invite.");
                   return;
                 }
-                setPendingInvites((current) => [...current, { email: inviteEmail.trim(), role: inviteRole }]);
-                setInviteEmail("");
-                setInviteRole("editor");
-                setInviteStatus("Invite queued. Backend invite flow is next.");
+                setInviteStatus("Sending invite...");
+                try {
+                  await apiClient.createWaybookInvite(waybookId, {
+                    email: inviteEmail.trim(),
+                    role: inviteRole
+                  });
+                  setInviteEmail("");
+                  setInviteRole("editor");
+                  setInviteStatus("Invite created.");
+                  await loadWaybook();
+                } catch (err) {
+                  setInviteStatus(err instanceof Error ? err.message : "Unable to create invite.");
+                }
               }}
               type="button"
             >
@@ -594,12 +614,25 @@ export default function WaybookDetailPage() {
             </button>
           </div>
           {inviteStatus ? <p className="mt-2 text-xs text-slate-500">{inviteStatus}</p> : null}
-          {pendingInvites.length ? (
+          {membersData?.members.length ? (
             <div className="mt-4 space-y-2">
-              {pendingInvites.map((invite) => (
-                <div key={`${invite.email}-${invite.role}`} className="flex items-center justify-between rounded border p-2 text-sm">
+              {membersData.members.map((member) => (
+                <div key={member.id} className="flex items-center justify-between rounded border p-2 text-sm">
+                  <span>{member.user.name || member.user.email || member.userId}</span>
+                  <span className="text-xs text-slate-500">{member.role}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {membersData?.invites.length ? (
+            <div className="mt-4 space-y-2">
+              {membersData.invites.map((invite) => (
+                <div key={invite.id} className="flex items-center justify-between rounded border border-dashed p-2 text-sm">
                   <span>{invite.email}</span>
-                  <span className="text-xs text-slate-500">{invite.role}</span>
+                  <span className="text-xs text-slate-500">
+                    invited as {invite.role}
+                    {invite.expiresAt ? `, expires ${new Date(invite.expiresAt).toLocaleDateString()}` : ""}
+                  </span>
                 </div>
               ))}
             </div>
@@ -669,11 +702,11 @@ export default function WaybookDetailPage() {
             <div className="mt-3 flex items-center gap-3">
               <button
                 className="rounded bg-brand-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                disabled={savingSettings}
+                disabled={savingSettings || !canManageTrip}
                 onClick={() => void saveTripSettings()}
                 type="button"
               >
-                {savingSettings ? "Saving..." : "Save settings"}
+                {!canManageTrip ? "Owner only" : savingSettings ? "Saving..." : "Save settings"}
               </button>
               {settingsStatus ? <span className="text-xs text-slate-500">{settingsStatus}</span> : null}
             </div>

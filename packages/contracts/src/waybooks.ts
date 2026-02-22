@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { cursorPageSchema, idSchema, isoDateTimeSchema } from "./common.js";
 import { daySummaryDtoSchema, publicReactionDtoSchema } from "./experience.js";
-import { waybookVisibilitySchema } from "./enums.js";
+import { waybookMemberRoleSchema, waybookVisibilitySchema } from "./enums.js";
 import { entryDtoSchema } from "./entries.js";
 
 export const waybookDtoSchema = z.object({
@@ -53,6 +53,7 @@ export type TimelineDayDTO = z.infer<typeof timelineDaySchema>;
 
 export const timelineResponseSchema = z.object({
   waybook: waybookDtoSchema,
+  accessRole: waybookMemberRoleSchema,
   days: z.array(timelineDaySchema)
 });
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>;

@@ -30,6 +30,7 @@ export const reactionTypeEnum = pgEnum("reaction_type", [
   "photogenic"
 ]);
 export const promptTypeEnum = pgEnum("prompt_type", ["itinerary_gap", "location_gap", "day_reflection"]);
+export const waybookMemberRoleEnum = pgEnum("waybook_member_role", ["owner", "editor", "viewer"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -181,6 +182,51 @@ export const waybookShareLinks = pgTable(
   (table) => [
     index("waybook_share_links_waybook_active_idx").on(table.waybookId, table.isActive),
     uniqueIndex("waybook_share_links_token_hash_unique").on(table.tokenHash)
+  ]
+);
+
+export const waybookMembers = pgTable(
+  "waybook_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: waybookMemberRoleEnum("role").notNull(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: now()
+  },
+  (table) => [
+    uniqueIndex("waybook_members_waybook_user_unique").on(table.waybookId, table.userId),
+    index("waybook_members_user_idx").on(table.userId),
+    index("waybook_members_waybook_role_idx").on(table.waybookId, table.role)
+  ]
+);
+
+export const waybookInvites = pgTable(
+  "waybook_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 320 }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    role: waybookMemberRoleEnum("role").notNull(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: now()
+  },
+  (table) => [
+    uniqueIndex("waybook_invites_token_hash_unique").on(table.tokenHash),
+    index("waybook_invites_waybook_email_idx").on(table.waybookId, table.email),
+    index("waybook_invites_waybook_created_idx").on(table.waybookId, table.createdAt)
   ]
 );
 

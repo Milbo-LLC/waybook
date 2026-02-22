@@ -1,4 +1,5 @@
 export * from "./client.js";
+export * from "./collaboration.js";
 export * from "./common.js";
 export * from "./entries.js";
 export * from "./enums.js";
