@@ -4,6 +4,7 @@ export type SessionUser = {
   id: string;
   email: string;
   name?: string | null;
+  image?: string | null;
 };
 
 export const startGoogleSignIn = async (callbackPath = "/auth/callback") => {
