@@ -64,6 +64,10 @@ export default function WaybookGuidedLifecyclePage() {
   const [checklist, setChecklist] = useState<Awaited<ReturnType<typeof apiClient.listChecklistItems>>["items"]>([]);
   const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof apiClient.getReadinessScore>> | null>(null);
   const [tripMessages, setTripMessages] = useState<Awaited<ReturnType<typeof apiClient.listMessages>>["items"]>([]);
+  const [dmThreads, setDmThreads] = useState<Awaited<ReturnType<typeof apiClient.listDMThreads>>["items"]>([]);
+  const [selectedDmThread, setSelectedDmThread] = useState<string | null>(null);
+  const [dmMessages, setDmMessages] = useState<Awaited<ReturnType<typeof apiClient.listMessages>>["items"]>([]);
+  const [dmTargetUserId, setDmTargetUserId] = useState("");
   const [tripPreferences, setTripPreferences] = useState<Awaited<ReturnType<typeof apiClient.getTripPreferences>> | null>(null);
   const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof apiClient.getBudgetSummary>> | null>(null);
 
@@ -72,7 +76,8 @@ export default function WaybookGuidedLifecyclePage() {
   const [bookingTitle, setBookingTitle] = useState("");
   const [bookingType, setBookingType] = useState<"activity" | "stay" | "transport" | "flight" | "other">("activity");
   const [checklistTitle, setChecklistTitle] = useState("");
-  const [messageText, setMessageText] = useState("");
+  const [tripMessageText, setTripMessageText] = useState("");
+  const [dmMessageText, setDmMessageText] = useState("");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
@@ -138,6 +143,7 @@ export default function WaybookGuidedLifecyclePage() {
       checklistResponse,
       readinessResponse,
       messagesResponse,
+      dmThreadsResponse,
       tripPreferencesResponse,
       budgetSummaryResponse
     ] = await Promise.all([
@@ -152,6 +158,7 @@ export default function WaybookGuidedLifecyclePage() {
       apiClient.listChecklistItems(waybookId),
       apiClient.getReadinessScore(waybookId),
       apiClient.listMessages(waybookId, "trip", "trip:main"),
+      apiClient.listDMThreads(waybookId),
       apiClient.getTripPreferences(waybookId),
       apiClient.getBudgetSummary(waybookId)
     ]);
@@ -172,6 +179,15 @@ export default function WaybookGuidedLifecyclePage() {
     setChecklist(checklistResponse.items);
     setReadiness(readinessResponse);
     setTripMessages(messagesResponse.items);
+    setDmThreads(dmThreadsResponse.items);
+    const currentThread = selectedDmThread ?? dmThreadsResponse.items[0]?.threadKey ?? null;
+    setSelectedDmThread(currentThread);
+    if (currentThread) {
+      const dmResponse = await apiClient.listMessages(waybookId, "dm", currentThread);
+      setDmMessages(dmResponse.items);
+    } else {
+      setDmMessages([]);
+    }
     setTripPreferences(tripPreferencesResponse);
     setBudgetSummary(budgetSummaryResponse);
     setBudgetInput(tripPreferencesResponse.budgetAmountMinor !== null ? (tripPreferencesResponse.budgetAmountMinor / 100).toFixed(2) : "");
@@ -224,6 +240,21 @@ export default function WaybookGuidedLifecyclePage() {
     },
     []
   );
+
+  useEffect(() => {
+    const firstMember = membersData?.members.find((member) => member.userId !== sessionUser?.id);
+    if (!dmTargetUserId && firstMember) {
+      setDmTargetUserId(firstMember.userId);
+    }
+  }, [membersData, sessionUser, dmTargetUserId]);
+
+  useEffect(() => {
+    if (!waybookId || !selectedDmThread) return;
+    void (async () => {
+      const response = await apiClient.listMessages(waybookId, "dm", selectedDmThread);
+      setDmMessages(response.items);
+    })();
+  }, [waybookId, selectedDmThread]);
 
   const uploadFileToEntry = async (entryId: string, file: File) => {
     const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "photo";
@@ -1076,34 +1107,140 @@ export default function WaybookGuidedLifecyclePage() {
           {workspaceSection === "messages" ? (
             <section className="wb-surface p-5">
               <h2 className="wb-title text-lg">Messages</h2>
-              <p className="wb-muted mt-1 text-sm">Trip communication has its own dedicated workspace.</p>
-              <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                {tripMessages.map((message) => (
-                  <div key={message.id} className="rounded bg-slate-50 p-2 text-sm">
-                    <p>{message.body}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">{new Date(message.createdAt).toLocaleString()}</p>
+              <p className="wb-muted mt-1 text-sm">Trip channel and direct messages are managed in one place.</p>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-800">Trip channel</p>
+                  <div className="mt-2 max-h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                    {tripMessages.map((message) => {
+                      const sender = membersData?.members.find((m) => m.userId === message.senderUserId);
+                      return (
+                        <div key={message.id} className="rounded bg-slate-50 p-2 text-sm">
+                          <p className="text-xs font-medium text-slate-600">{sender?.user.name || sender?.user.email || "Trip member"}</p>
+                          <p className="mt-1">{message.body}</p>
+                          <p className="mt-1 text-[11px] text-slate-500">{new Date(message.createdAt).toLocaleString()}</p>
+                        </div>
+                      );
+                    })}
+                    {!tripMessages.length ? <p className="text-sm text-slate-500">No trip messages yet.</p> : null}
                   </div>
-                ))}
-                {!tripMessages.length ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                <input className="wb-input" onChange={(e) => setMessageText(e.target.value)} placeholder="Message the trip..." value={messageText} />
-                <button
-                  className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
-                  onClick={async () => {
-                    if (!messageText.trim()) return;
-                    await apiClient.createMessage(waybookId, {
-                      scope: "trip",
-                      threadKey: "trip:main",
-                      body: messageText.trim()
-                    });
-                    setMessageText("");
-                    await loadAll();
-                  }}
-                  type="button"
-                >
-                  Send
-                </button>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <input className="wb-input" onChange={(e) => setTripMessageText(e.target.value)} placeholder="Message the trip..." value={tripMessageText} />
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        if (!tripMessageText.trim()) return;
+                        await apiClient.createMessage(waybookId, {
+                          scope: "trip",
+                          threadKey: "trip:main",
+                          body: tripMessageText.trim()
+                        });
+                        setTripMessageText("");
+                        await loadAll();
+                      }}
+                      type="button"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-800">Direct messages</p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select className="wb-input" onChange={(event) => setDmTargetUserId(event.target.value)} value={dmTargetUserId}>
+                      <option value="">Select a member</option>
+                      {membersData?.members
+                        .filter((member) => member.userId !== sessionUser?.id)
+                        .map((member) => (
+                          <option key={member.userId} value={member.userId}>
+                            {member.user.name || member.user.email || member.userId}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      disabled={!dmTargetUserId || !sessionUser?.id}
+                      onClick={async () => {
+                        if (!dmTargetUserId || !sessionUser?.id) return;
+                        const sortedIds = [sessionUser.id, dmTargetUserId].sort();
+                        const thread = `dm:${sortedIds.join(":")}`;
+                        setSelectedDmThread(thread);
+                        const exists = dmThreads.some((item) => item.threadKey === thread);
+                        if (!exists) {
+                          setDmThreads((current) => [
+                            { threadKey: thread, participantIds: [sessionUser.id, dmTargetUserId], lastMessageAt: null },
+                            ...current
+                          ]);
+                        }
+                      }}
+                      type="button"
+                    >
+                      Open DM
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[200px_1fr]">
+                    <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                      {dmThreads.map((thread) => {
+                        const otherUserId = thread.participantIds.find((id) => id !== sessionUser?.id) ?? thread.participantIds[0];
+                        const otherMember = membersData?.members.find((member) => member.userId === otherUserId);
+                        const label = otherMember?.user.name || otherMember?.user.email || "Direct chat";
+                        return (
+                          <button
+                            key={thread.threadKey}
+                            className={`w-full rounded-md px-2 py-1 text-left text-xs ${selectedDmThread === thread.threadKey ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"}`}
+                            onClick={() => setSelectedDmThread(thread.threadKey)}
+                            type="button"
+                          >
+                            <p className="truncate">{label}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">{thread.lastMessageAt ? new Date(thread.lastMessageAt).toLocaleString() : "No messages yet"}</p>
+                          </button>
+                        );
+                      })}
+                      {!dmThreads.length ? <p className="text-xs text-slate-500">No DM threads yet.</p> : null}
+                    </div>
+
+                    <div>
+                      <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                        {dmMessages.map((message) => {
+                          const mine = message.senderUserId === sessionUser?.id;
+                          const sender = membersData?.members.find((member) => member.userId === message.senderUserId);
+                          return (
+                            <div key={message.id} className={`rounded p-2 text-sm ${mine ? "bg-emerald-50" : "bg-slate-50"}`}>
+                              <p className="text-xs font-medium text-slate-600">{mine ? "You" : sender?.user.name || sender?.user.email || "Member"}</p>
+                              <p className="mt-1">{message.body}</p>
+                              <p className="mt-1 text-[11px] text-slate-500">{new Date(message.createdAt).toLocaleString()}</p>
+                            </div>
+                          );
+                        })}
+                        {!dmMessages.length ? <p className="text-xs text-slate-500">{selectedDmThread ? "No messages in this thread." : "Open a thread to start messaging."}</p> : null}
+                      </div>
+
+                      <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <input className="wb-input" onChange={(e) => setDmMessageText(e.target.value)} placeholder="Send a direct message..." value={dmMessageText} />
+                        <button
+                          className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                          disabled={!selectedDmThread}
+                          onClick={async () => {
+                            if (!dmMessageText.trim() || !selectedDmThread) return;
+                            await apiClient.createMessage(waybookId, {
+                              scope: "dm",
+                              threadKey: selectedDmThread,
+                              body: dmMessageText.trim()
+                            });
+                            setDmMessageText("");
+                            await loadAll();
+                          }}
+                          type="button"
+                        >
+                          Send DM
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
           ) : null}
