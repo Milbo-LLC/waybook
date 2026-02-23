@@ -1,17 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { ListMembersResponse } from "@waybook/contracts";
+import { AppTopbar } from "@/components/app-topbar";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { PageShell } from "@/components/page-shell";
 import { EntryList } from "@/features/entries/entry-list";
 import { apiClient } from "@/lib/api";
-import { getSession, signOut, type SessionUser } from "@/lib/auth";
+import { formatTripDateRange } from "@/lib/dates";
+import { getSession, type SessionUser } from "@/lib/auth";
 
-type TabKey = "plan" | "itinerary" | "bookings" | "expenses" | "capture" | "reflect" | "timeline" | "members" | "settings";
+type TabKey = "plan" | "itinerary" | "bookings" | "expenses" | "capture" | "reflect" | "timeline" | "members";
 
 const normalizeWhitespace = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -29,7 +33,6 @@ export default function WaybookDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const waybookId = useMemo(() => params.id, [params.id]);
-  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,17 +53,16 @@ export default function WaybookDetailPage() {
   const [summaryText, setSummaryText] = useState("");
   const [savingSummary, setSavingSummary] = useState(false);
 
-  const [settingsDraft, setSettingsDraft] = useState({
+  const [detailsDraft, setDetailsDraft] = useState({
     title: "",
     description: "",
     startDate: "",
-    endDate: "",
-    visibility: "private" as "private" | "link_only" | "public"
+    endDate: ""
   });
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsStatus, setDetailsStatus] = useState<string | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
   const [membersData, setMembersData] = useState<ListMembersResponse | null>(null);
   const [planningItems, setPlanningItems] = useState<Awaited<ReturnType<typeof apiClient.listPlanningItems>>["items"]>([]);
   const [tripTasks, setTripTasks] = useState<Awaited<ReturnType<typeof apiClient.listTasks>>["items"]>([]);
@@ -134,12 +136,11 @@ export default function WaybookDetailPage() {
     setExpenseEntries(expensesResponse.items);
     setItineraryEvents(itineraryResponse.items);
     setSettlementSummary(settlementsResponse);
-    setSettingsDraft({
+    setDetailsDraft({
       title: timelineResponse.waybook.title,
       description: timelineResponse.waybook.description ?? "",
       startDate: timelineResponse.waybook.startDate,
-      endDate: timelineResponse.waybook.endDate,
-      visibility: timelineResponse.waybook.visibility
+      endDate: timelineResponse.waybook.endDate
     });
   };
 
@@ -185,16 +186,6 @@ export default function WaybookDetailPage() {
     setSpeechSupported(Boolean(ctor));
   }, []);
 
-  useEffect(() => {
-    const onClickOutside = (event: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
-        setProfileOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
   useEffect(
     () => () => {
       keepListeningRef.current = false;
@@ -210,6 +201,27 @@ export default function WaybookDetailPage() {
   const accessRole = timeline?.accessRole ?? "viewer";
   const canEditTripContent = accessRole === "owner" || accessRole === "editor";
   const canManageTrip = accessRole === "owner";
+  const hasPlanning = planningItems.length > 0;
+  const hasItinerary = itineraryEvents.length > 0;
+  const hasBooking = bookingRecords.length > 0;
+  const tripHasStarted = todayDate >= (timeline?.waybook.startDate ?? todayDate);
+  const inTripMode = tripHasStarted || hasBooking;
+
+  const tabMeta: Array<{ key: TabKey; label: string; unlocked: boolean; lockReason?: string }> = [
+    { key: "plan", label: "Plan", unlocked: true },
+    { key: "itinerary", label: "Itinerary", unlocked: hasPlanning, lockReason: "Add at least one plan item first." },
+    { key: "bookings", label: "Bookings", unlocked: hasItinerary, lockReason: "Create an itinerary event first." },
+    { key: "expenses", label: "Expenses", unlocked: inTripMode, lockReason: "Available once your trip starts or has a booking." },
+    { key: "capture", label: "Capture", unlocked: inTripMode, lockReason: "Capture unlocks when your trip starts." },
+    { key: "reflect", label: "Reflect", unlocked: inTripMode, lockReason: "Reflection unlocks when your trip starts." },
+    { key: "timeline", label: "Timeline", unlocked: inTripMode, lockReason: "Timeline unlocks when your trip starts." },
+    { key: "members", label: "Members", unlocked: true }
+  ];
+  const activeTabIsUnlocked = tabMeta.find((tab) => tab.key === activeTab)?.unlocked ?? false;
+
+  useEffect(() => {
+    if (!activeTabIsUnlocked) setActiveTab("plan");
+  }, [activeTabIsUnlocked]);
 
   const uploadFileToEntry = async (entryId: string, file: File) => {
     const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "photo";
@@ -318,46 +330,45 @@ export default function WaybookDetailPage() {
     else startDictation();
   };
 
-  const saveTripSettings = async () => {
+  const saveTripDetails = async () => {
     if (!waybookId || !timeline) return;
-    setSettingsError(null);
-    setSettingsStatus(null);
+    setDetailsError(null);
+    setDetailsStatus(null);
 
-    if (settingsDraft.endDate < settingsDraft.startDate) {
-      setSettingsError("End date must be on or after start date.");
+    if (detailsDraft.endDate < detailsDraft.startDate) {
+      setDetailsError("End date must be on or after start date.");
       return;
     }
 
     const previous = timeline.waybook;
     const optimistic = {
       ...previous,
-      title: settingsDraft.title.trim() || previous.title,
-      description: settingsDraft.description.trim() || null,
-      startDate: settingsDraft.startDate,
-      endDate: settingsDraft.endDate,
-      visibility: settingsDraft.visibility
+      title: detailsDraft.title.trim() || previous.title,
+      description: detailsDraft.description.trim() || null,
+      startDate: detailsDraft.startDate,
+      endDate: detailsDraft.endDate
     };
 
-    setSavingSettings(true);
+    setSavingDetails(true);
     setTimeline((current) => (current ? { ...current, waybook: optimistic } : current));
-    setSettingsStatus("Saving...");
+    setDetailsStatus("Saving...");
 
     try {
       const updated = await apiClient.updateWaybook(waybookId, {
         title: optimistic.title,
         description: optimistic.description,
         startDate: optimistic.startDate,
-        endDate: optimistic.endDate,
-        visibility: optimistic.visibility
+        endDate: optimistic.endDate
       });
       setTimeline((current) => (current ? { ...current, waybook: updated } : current));
-      setSettingsStatus("Saved");
+      setDetailsStatus("Saved");
+      setEditingDetails(false);
     } catch (err) {
       setTimeline((current) => (current ? { ...current, waybook: previous } : current));
-      setSettingsStatus(null);
-      setSettingsError(err instanceof Error ? err.message : "Unable to update trip settings.");
+      setDetailsStatus(null);
+      setDetailsError(err instanceof Error ? err.message : "Unable to update trip details.");
     } finally {
-      setSavingSettings(false);
+      setSavingDetails(false);
     }
   };
 
@@ -383,82 +394,115 @@ export default function WaybookDetailPage() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-[120] border-b border-slate-200/80 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
-          <button className="wb-title text-lg" onClick={() => router.push("/")} type="button">
-            Waybook
-          </button>
-          <div className="relative" ref={profileMenuRef}>
-            <button
-              aria-label="Open profile menu"
-              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200"
-              onClick={() => setProfileOpen((open) => !open)}
-              type="button"
-            >
-              {sessionUser?.image ? (
-                <img
-                  alt={sessionUser.name ? `${sessionUser.name} avatar` : "Profile avatar"}
-                  className="h-full w-full object-cover"
-                  referrerPolicy="no-referrer"
-                  src={sessionUser.image}
-                />
-              ) : (
-                <span className="text-xs font-semibold text-slate-700">
-                  {sessionUser?.name?.trim()?.charAt(0).toUpperCase() || sessionUser?.email?.charAt(0).toUpperCase() || "?"}
-                </span>
-              )}
-            </button>
-            {profileOpen ? (
-              <div className="absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                <button
-                  className="w-full rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                  onClick={async () => {
-                    await signOut();
-                    router.push("/login" as any);
-                  }}
-                  type="button"
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </header>
+      <AppTopbar
+        user={sessionUser}
+        rightSlot={
+          <>
+            <Link href="/app/waybooks/new" className="wb-btn-primary hidden sm:inline-flex">
+              New Trip
+            </Link>
+            <LogoutButton />
+          </>
+        }
+      />
 
       <PageShell className="overflow-x-hidden pb-8 pt-20">
-      <section className="wb-surface sticky top-16 z-[70] px-4 py-3">
-        <div className="flex items-start gap-2">
-          <button
-            aria-label="Back to trips"
-            className="mt-0.5 text-xl leading-none text-slate-700 transition hover:text-slate-900"
-            onClick={() => router.push("/")}
-            type="button"
-          >
-            ←
-          </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="wb-title truncate text-xl leading-tight">{timeline?.waybook.title ?? "Waybook"}</h1>
-            <p className="wb-muted text-xs">
-              {timeline.waybook.startDate} to {timeline.waybook.endDate}
-            </p>
+        <section className="wb-surface px-4 py-4 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <button
+                  aria-label="Back to trips"
+                  className="text-xl leading-none text-slate-700 transition hover:text-slate-900"
+                  onClick={() => router.push("/")}
+                  type="button"
+                >
+                  ←
+                </button>
+                <h1 className="wb-title truncate text-2xl leading-tight">{timeline.waybook.title}</h1>
+              </div>
+              <p className="wb-muted mt-1 text-sm">{formatTripDateRange(timeline.waybook.startDate, timeline.waybook.endDate)}</p>
+              {timeline.waybook.description ? <p className="wb-muted mt-2 text-sm">{timeline.waybook.description}</p> : null}
+            </div>
+            {canManageTrip ? (
+              <button
+                className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                onClick={() => {
+                  setEditingDetails((current) => !current);
+                  setDetailsError(null);
+                  setDetailsStatus(null);
+                }}
+                type="button"
+              >
+                {editingDetails ? "Close" : "Edit details"}
+              </button>
+            ) : null}
           </div>
-        </div>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {(["plan", "itinerary", "bookings", "expenses", "capture", "reflect", "timeline", "members", "settings"] as TabKey[]).map((tab) => (
-            <button
-              key={tab}
-              className={`wb-pill capitalize ${
-                activeTab === tab ? "wb-pill-active" : ""
-              }`}
-              onClick={() => setActiveTab(tab)}
-              type="button"
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </section>
+          {editingDetails && canManageTrip ? (
+            <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-slate-600">Title</span>
+                <input
+                  className="wb-input"
+                  onChange={(event) => setDetailsDraft((prev) => ({ ...prev, title: event.target.value }))}
+                  value={detailsDraft.title}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-slate-600">Description</span>
+                <input
+                  className="wb-input"
+                  onChange={(event) => setDetailsDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  value={detailsDraft.description}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-slate-600">Start date</span>
+                <input
+                  className="wb-input"
+                  onChange={(event) => setDetailsDraft((prev) => ({ ...prev, startDate: event.target.value }))}
+                  type="date"
+                  value={detailsDraft.startDate}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-slate-600">End date</span>
+                <input
+                  className="wb-input"
+                  onChange={(event) => setDetailsDraft((prev) => ({ ...prev, endDate: event.target.value }))}
+                  type="date"
+                  value={detailsDraft.endDate}
+                />
+              </label>
+              <div className="sm:col-span-2">
+                <button
+                  className="wb-btn-primary disabled:opacity-60"
+                  disabled={savingDetails}
+                  onClick={() => void saveTripDetails()}
+                  type="button"
+                >
+                  {savingDetails ? "Saving..." : "Save details"}
+                </button>
+                {detailsStatus ? <span className="ml-3 text-xs text-slate-500">{detailsStatus}</span> : null}
+                {detailsError ? <p className="mt-2 text-xs text-red-600">{detailsError}</p> : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {tabMeta.map((tab) => (
+              <button
+                key={tab.key}
+                className={`wb-pill ${activeTab === tab.key ? "wb-pill-active" : ""} ${tab.unlocked ? "" : "cursor-not-allowed opacity-50"}`}
+                disabled={!tab.unlocked}
+                onClick={() => setActiveTab(tab.key)}
+                title={tab.unlocked ? undefined : tab.lockReason}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
@@ -1118,81 +1162,6 @@ export default function WaybookDetailPage() {
         </section>
       ) : null}
 
-      {activeTab === "settings" ? (
-        <section className="space-y-4">
-          <div className="wb-surface p-4">
-            <h2 className="wb-title text-lg">Trip Settings</h2>
-            <p className="wb-muted mt-1 text-sm">Edit trip details and visibility.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">Title</span>
-                <input
-                  className="w-full rounded border p-2"
-                  onChange={(event) => setSettingsDraft((prev) => ({ ...prev, title: event.target.value }))}
-                  value={settingsDraft.title}
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">Visibility</span>
-                <select
-                  className="w-full rounded border p-2"
-                  onChange={(event) =>
-                    setSettingsDraft((prev) => ({
-                      ...prev,
-                      visibility: event.target.value as "private" | "link_only" | "public"
-                    }))
-                  }
-                  value={settingsDraft.visibility}
-                >
-                  <option value="private">private</option>
-                  <option value="link_only">link only</option>
-                  <option value="public">public</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">Start date</span>
-                <input
-                  className="w-full rounded border p-2"
-                  onChange={(event) => setSettingsDraft((prev) => ({ ...prev, startDate: event.target.value }))}
-                  type="date"
-                  value={settingsDraft.startDate}
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">End date</span>
-                <input
-                  className="w-full rounded border p-2"
-                  onChange={(event) => setSettingsDraft((prev) => ({ ...prev, endDate: event.target.value }))}
-                  type="date"
-                  value={settingsDraft.endDate}
-                />
-              </label>
-            </div>
-            <label className="mt-3 block text-sm">
-              <span className="mb-1 block text-slate-600">Description</span>
-              <textarea
-                className="w-full rounded border p-2"
-                onChange={(event) => setSettingsDraft((prev) => ({ ...prev, description: event.target.value }))}
-                rows={4}
-                value={settingsDraft.description}
-              />
-            </label>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                className="wb-btn-primary disabled:opacity-60"
-                disabled={savingSettings || !canManageTrip}
-                onClick={() => void saveTripSettings()}
-                type="button"
-              >
-                {!canManageTrip ? "Owner only" : savingSettings ? "Saving..." : "Save settings"}
-              </button>
-              {settingsStatus ? <span className="text-xs text-slate-500">{settingsStatus}</span> : null}
-            </div>
-            {settingsError ? <p className="mt-2 text-xs text-red-600">{settingsError}</p> : null}
-          </div>
-        </section>
-      ) : null}
-
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white p-2 sm:hidden">
         <div className="grid grid-cols-4 gap-2">
           <button className="rounded border px-2 py-2 text-xs" onClick={() => router.push("/")} type="button">
@@ -1212,12 +1181,8 @@ export default function WaybookDetailPage() {
           >
             Timeline
           </button>
-          <button
-            className={`rounded px-2 py-2 text-xs ${activeTab === "settings" ? "bg-brand-700 text-white" : "border"}`}
-            onClick={() => setActiveTab("settings")}
-            type="button"
-          >
-            Settings
+          <button className="rounded border px-2 py-2 text-xs" onClick={() => setActiveTab("members")} type="button">
+            Members
           </button>
         </div>
       </nav>
