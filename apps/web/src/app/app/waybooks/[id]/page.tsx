@@ -16,6 +16,7 @@ import { formatTripDateRange } from "@/lib/dates";
 import { getSession, type SessionUser } from "@/lib/auth";
 
 type StageKey = TripStageStateDTO["currentStage"];
+type WorkspaceSection = "workflow" | "members" | "messages" | "settings";
 
 const stageLabels: Record<StageKey, string> = {
   destinations: "Destinations",
@@ -52,6 +53,7 @@ export default function WaybookGuidedLifecyclePage() {
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof apiClient.listEntries>>["items"]>([]);
   const [stageState, setStageState] = useState<TripStageStateDTO | null>(null);
   const [activeStage, setActiveStage] = useState<StageKey>("destinations");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("workflow");
 
   const [membersData, setMembersData] = useState<ListMembersResponse | null>(null);
   const [destinations, setDestinations] = useState<Awaited<ReturnType<typeof apiClient.listDestinations>>["items"]>([]);
@@ -84,6 +86,7 @@ export default function WaybookGuidedLifecyclePage() {
   const [expenseStatus, setExpenseStatus] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingTrip, setDeletingTrip] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [savingCapture, setSavingCapture] = useState(false);
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
@@ -374,39 +377,74 @@ export default function WaybookGuidedLifecyclePage() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {stageMeta.map((stage) => (
-              <button
-                key={stage.stage}
-                className={`wb-pill ${activeStage === stage.stage ? "wb-pill-active" : ""} ${stage.status === "locked" ? "cursor-not-allowed opacity-50" : ""}`}
-                disabled={stage.status === "locked"}
-                onClick={() => setActiveStage(stage.stage)}
-                title={stage.missingRequirements.join(" ")}
-                type="button"
-              >
-                {stageLabels[stage.stage]}
-              </button>
-            ))}
-            {canEdit ? (
-              <button
-                className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
-                onClick={async () => {
-                  await apiClient.advanceStage(waybookId);
-                  await loadAll();
-                }}
-                type="button"
-              >
-                Complete stage
-              </button>
-            ) : null}
+            <button
+              className={`wb-pill ${workspaceSection === "workflow" ? "wb-pill-active" : ""}`}
+              onClick={() => setWorkspaceSection("workflow")}
+              type="button"
+            >
+              Workflow
+            </button>
+            <button
+              className={`wb-pill ${workspaceSection === "members" ? "wb-pill-active" : ""}`}
+              onClick={() => setWorkspaceSection("members")}
+              type="button"
+            >
+              Members
+            </button>
+            <button
+              className={`wb-pill ${workspaceSection === "messages" ? "wb-pill-active" : ""}`}
+              onClick={() => setWorkspaceSection("messages")}
+              type="button"
+            >
+              Messages
+            </button>
+            <button
+              className={`wb-pill ${workspaceSection === "settings" ? "wb-pill-active" : ""}`}
+              onClick={() => setWorkspaceSection("settings")}
+              type="button"
+            >
+              Settings
+            </button>
           </div>
-          {activeStageMeta?.status === "locked" && activeStageMeta.missingRequirements.length ? (
+
+          {workspaceSection === "workflow" ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {stageMeta.map((stage) => (
+                <button
+                  key={stage.stage}
+                  className={`wb-pill ${activeStage === stage.stage ? "wb-pill-active" : ""} ${stage.status === "locked" ? "cursor-not-allowed opacity-50" : ""}`}
+                  disabled={stage.status === "locked"}
+                  onClick={() => setActiveStage(stage.stage)}
+                  title={stage.missingRequirements.join(" ")}
+                  type="button"
+                >
+                  {stageLabels[stage.stage]}
+                </button>
+              ))}
+              {canEdit ? (
+                <button
+                  className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                  onClick={async () => {
+                    await apiClient.advanceStage(waybookId);
+                    await loadAll();
+                  }}
+                  type="button"
+                >
+                  Complete stage
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {workspaceSection === "workflow" && activeStageMeta?.status === "locked" && activeStageMeta.missingRequirements.length ? (
             <p className="mt-2 text-xs text-amber-700">Locked: {activeStageMeta.missingRequirements.join(" ")}</p>
           ) : null}
         </section>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="space-y-4">
-            {!canAccessActiveStage ? null : null}
+        <div className="mt-4 space-y-4">
+          {workspaceSection === "workflow" ? (
+            <div className="space-y-4">
+              {!canAccessActiveStage ? null : null}
+ 
 
             {activeStage === "destinations" && canAccessActiveStage ? (
               <section className="wb-surface p-5">
@@ -905,12 +943,177 @@ export default function WaybookGuidedLifecyclePage() {
               </section>
             ) : null}
           </div>
+          ) : null}
 
-          <aside className="space-y-4">
-            <section className="wb-surface p-4">
-              <h3 className="wb-title text-base">Budget and expenses</h3>
-              <p className="wb-muted mt-1 text-xs">Track spend by payer and split with your trip defaults.</p>
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {workspaceSection === "members" ? (
+            <section className="wb-surface p-5">
+              <h2 className="wb-title text-lg">Member management</h2>
+              <p className="wb-muted mt-1 text-sm">Invite people, manage roles, and monitor pending invites.</p>
+
+              <div className="mt-4 space-y-2">
+                {membersData?.members.map((member) => (
+                  <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>{member.user.name || member.user.email || member.userId}</span>
+                      {sessionUser?.id === member.userId ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">You</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{member.role}</span>
+                      {canManageMembers && sessionUser?.id !== member.userId && member.role !== "owner" ? (
+                        <>
+                          <select
+                            className="rounded border px-2 py-1 text-xs"
+                            onChange={async (event) => {
+                              await apiClient.updateWaybookMemberRole(waybookId, member.id, {
+                                role: event.target.value as "editor" | "viewer"
+                              });
+                              await loadAll();
+                            }}
+                            value={member.role}
+                          >
+                            <option value="editor">editor</option>
+                            <option value="viewer">viewer</option>
+                          </select>
+                          <button
+                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-700"
+                            onClick={async () => {
+                              await apiClient.removeWaybookMember(waybookId, member.id);
+                              await loadAll();
+                            }}
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {canManageMembers ? (
+                <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_160px_auto]">
+                  <input
+                    className="wb-input"
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    placeholder="friend@example.com"
+                    type="email"
+                    value={inviteEmail}
+                  />
+                  <select
+                    className="rounded-lg border border-slate-200 p-2 text-sm"
+                    onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
+                    value={inviteRole}
+                  >
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button
+                    className="wb-btn-primary !px-3 !py-1.5 !text-xs"
+                    onClick={async () => {
+                      if (!inviteEmail.trim()) return;
+                      setInviteStatus("Sending...");
+                      try {
+                        await apiClient.createWaybookInvite(waybookId, { email: inviteEmail.trim(), role: inviteRole });
+                        setInviteEmail("");
+                        setInviteStatus("Invite sent.");
+                        await loadAll();
+                      } catch (err) {
+                        setInviteStatus(err instanceof Error ? err.message : "Unable to send invite.");
+                      }
+                    }}
+                    type="button"
+                  >
+                    Invite
+                  </button>
+                  {inviteStatus ? <p className="text-xs text-slate-500 sm:col-span-3">{inviteStatus}</p> : null}
+                </div>
+              ) : null}
+
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <h3 className="wb-title text-base">Pending invites</h3>
+                <div className="mt-2 space-y-2">
+                  {membersData?.invites.map((invite) => (
+                    <div key={invite.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-sm">
+                      <div>
+                        <p className="font-medium">{invite.email}</p>
+                        <p className="text-xs text-slate-500">{invite.role} • sent {new Date(invite.createdAt).toLocaleString()}</p>
+                      </div>
+                      {canManageMembers ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="rounded border px-2 py-1 text-xs"
+                            onClick={async () => {
+                              await apiClient.resendWaybookInvite(waybookId, invite.id);
+                              await loadAll();
+                            }}
+                            type="button"
+                          >
+                            Resend
+                          </button>
+                          <button
+                            className="rounded border border-red-200 px-2 py-1 text-xs text-red-700"
+                            onClick={async () => {
+                              await apiClient.revokeWaybookInvite(waybookId, invite.id);
+                              await loadAll();
+                            }}
+                            type="button"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  {!membersData?.invites.length ? <p className="text-sm text-slate-500">No pending invites.</p> : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {workspaceSection === "messages" ? (
+            <section className="wb-surface p-5">
+              <h2 className="wb-title text-lg">Messages</h2>
+              <p className="wb-muted mt-1 text-sm">Trip communication has its own dedicated workspace.</p>
+              <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {tripMessages.map((message) => (
+                  <div key={message.id} className="rounded bg-slate-50 p-2 text-sm">
+                    <p>{message.body}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{new Date(message.createdAt).toLocaleString()}</p>
+                  </div>
+                ))}
+                {!tripMessages.length ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <input className="wb-input" onChange={(e) => setMessageText(e.target.value)} placeholder="Message the trip..." value={messageText} />
+                <button
+                  className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                  onClick={async () => {
+                    if (!messageText.trim()) return;
+                    await apiClient.createMessage(waybookId, {
+                      scope: "trip",
+                      threadKey: "trip:main",
+                      body: messageText.trim()
+                    });
+                    setMessageText("");
+                    await loadAll();
+                  }}
+                  type="button"
+                >
+                  Send
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {workspaceSection === "settings" ? (
+            <section className="wb-surface p-5">
+              <h2 className="wb-title text-lg">Trip settings</h2>
+              <p className="wb-muted mt-1 text-sm">Budget defaults, expense tracking, and destructive actions.</p>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Spent</p>
                 <p className="text-lg font-semibold text-slate-900">
                   {budgetSummary
@@ -923,9 +1126,9 @@ export default function WaybookGuidedLifecyclePage() {
                 {budgetSummary && budgetSummary.budgetAmountMinor !== null ? (
                   <p className="mt-1 text-xs text-slate-600">
                     Remaining{" "}
-                    {(Number(budgetSummary?.remainingAmountMinor ?? 0) / 100).toLocaleString(undefined, {
+                    {(Number(budgetSummary.remainingAmountMinor ?? 0) / 100).toLocaleString(undefined, {
                       style: "currency",
-                      currency: budgetSummary?.budgetCurrency || budgetSummary?.currency || "USD"
+                      currency: budgetSummary.budgetCurrency || budgetSummary.currency || "USD"
                     })}
                   </p>
                 ) : (
@@ -934,24 +1137,22 @@ export default function WaybookGuidedLifecyclePage() {
               </div>
               {canEdit ? (
                 <>
-                  <div className="mt-3 grid gap-2">
-                    <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
-                      <input
-                        className="wb-input"
-                        min="0"
-                        onChange={(event) => setBudgetInput(event.target.value)}
-                        placeholder="Budget (optional)"
-                        step="0.01"
-                        type="number"
-                        value={budgetInput}
-                      />
-                      <input
-                        className="wb-input uppercase"
-                        maxLength={8}
-                        onChange={(event) => setBudgetCurrencyInput(event.target.value.toUpperCase())}
-                        value={budgetCurrencyInput}
-                      />
-                    </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_120px_180px_auto]">
+                    <input
+                      className="wb-input"
+                      min="0"
+                      onChange={(event) => setBudgetInput(event.target.value)}
+                      placeholder="Budget (optional)"
+                      step="0.01"
+                      type="number"
+                      value={budgetInput}
+                    />
+                    <input
+                      className="wb-input uppercase"
+                      maxLength={8}
+                      onChange={(event) => setBudgetCurrencyInput(event.target.value.toUpperCase())}
+                      value={budgetCurrencyInput}
+                    />
                     <select
                       className="wb-input"
                       onChange={(event) => setSplitMethodInput(event.target.value as "equal" | "custom" | "percentage" | "shares")}
@@ -976,220 +1177,156 @@ export default function WaybookGuidedLifecyclePage() {
                       }}
                       type="button"
                     >
-                      Save budget defaults
+                      Save
                     </button>
                   </div>
 
                   <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick expense</p>
-                    <input
-                      className="wb-input"
-                      onChange={(event) => setExpenseTitle(event.target.value)}
-                      placeholder="Expense title"
-                      value={expenseTitle}
-                    />
-                    <input
-                      className="wb-input"
-                      min="0"
-                      onChange={(event) => setExpenseAmount(event.target.value)}
-                      placeholder="Amount"
-                      step="0.01"
-                      type="number"
-                      value={expenseAmount}
-                    />
-                    <select className="wb-input" onChange={(event) => setExpensePayerId(event.target.value)} value={expensePayerId}>
-                      {[timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
-                        .filter((value, index, arr) => arr.indexOf(value) === index)
-                        .map((userId) => {
-                          const member = membersData?.members.find((item) => item.userId === userId);
-                          const label = member?.user.name || member?.user.email || userId;
-                          return (
-                            <option key={userId} value={userId}>
-                              Paid by {label}
-                            </option>
-                          );
-                        })}
-                    </select>
-                    <button
-                      className="wb-btn-primary !px-3 !py-1.5 !text-xs"
-                      onClick={async () => {
-                        if (!expenseTitle.trim() || !expenseAmount.trim() || !expensePayerId) return;
-                        setExpenseStatus("Saving expense...");
-                        try {
-                          const amountMinor = Math.round(Number(expenseAmount) * 100);
-                          const participants = [timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
-                            .filter((value, index, arr) => arr.indexOf(value) === index);
-                          const splitMethod = tripPreferences?.defaultSplitMethod ?? splitMethodInput;
-                          const splits =
-                            splitMethod === "percentage"
-                              ? participants.map((userId) => ({
-                                  userId,
-                                  percentage: Math.floor(100 / Math.max(participants.length, 1))
-                                }))
-                              : splitMethod === "shares"
-                                ? participants.map((userId) => ({ userId, shares: 1 }))
-                                : [];
+                    <div className="grid gap-2 sm:grid-cols-[1fr_160px_200px_auto]">
+                      <input
+                        className="wb-input"
+                        onChange={(event) => setExpenseTitle(event.target.value)}
+                        placeholder="Expense title"
+                        value={expenseTitle}
+                      />
+                      <input
+                        className="wb-input"
+                        min="0"
+                        onChange={(event) => setExpenseAmount(event.target.value)}
+                        placeholder="Amount"
+                        step="0.01"
+                        type="number"
+                        value={expenseAmount}
+                      />
+                      <select className="wb-input" onChange={(event) => setExpensePayerId(event.target.value)} value={expensePayerId}>
+                        {[timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
+                          .filter((value, index, arr) => arr.indexOf(value) === index)
+                          .map((userId) => {
+                            const member = membersData?.members.find((item) => item.userId === userId);
+                            const label = member?.user.name || member?.user.email || userId;
+                            return (
+                              <option key={userId} value={userId}>
+                                Paid by {label}
+                              </option>
+                            );
+                          })}
+                      </select>
+                      <button
+                        className="wb-btn-primary !px-3 !py-1.5 !text-xs"
+                        onClick={async () => {
+                          if (!expenseTitle.trim() || !expenseAmount.trim() || !expensePayerId) return;
+                          setExpenseStatus("Saving expense...");
+                          try {
+                            const amountMinor = Math.round(Number(expenseAmount) * 100);
+                            const participants = [timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
+                              .filter((value, index, arr) => arr.indexOf(value) === index);
+                            const splitMethod = tripPreferences?.defaultSplitMethod ?? splitMethodInput;
+                            const splits =
+                              splitMethod === "percentage"
+                                ? participants.map((userId) => ({
+                                    userId,
+                                    percentage: Math.floor(100 / Math.max(participants.length, 1))
+                                  }))
+                                : splitMethod === "shares"
+                                  ? participants.map((userId) => ({ userId, shares: 1 }))
+                                  : [];
 
-                          await apiClient.createExpense(waybookId, {
-                            title: expenseTitle.trim(),
-                            category: activeStage,
-                            paidByUserId: expensePayerId,
-                            currency: budgetCurrencyInput,
-                            amountMinor,
-                            tripBaseCurrency: tripPreferences?.baseCurrency || budgetCurrencyInput,
-                            tripBaseAmountMinor: amountMinor,
-                            fxRate: null,
-                            incurredAt: new Date().toISOString(),
-                            notes: null,
-                            splitMethod,
-                            status: "logged",
-                            splits
-                          });
-                          setExpenseTitle("");
-                          setExpenseAmount("");
-                          setExpenseStatus("Expense saved.");
-                          await loadAll();
-                        } catch (err) {
-                          setExpenseStatus(err instanceof Error ? err.message : "Unable to save expense.");
-                        }
-                      }}
-                      type="button"
-                    >
-                      Add expense
-                    </button>
+                            await apiClient.createExpense(waybookId, {
+                              title: expenseTitle.trim(),
+                              category: "trip",
+                              paidByUserId: expensePayerId,
+                              currency: budgetCurrencyInput,
+                              amountMinor,
+                              tripBaseCurrency: tripPreferences?.baseCurrency || budgetCurrencyInput,
+                              tripBaseAmountMinor: amountMinor,
+                              fxRate: null,
+                              incurredAt: new Date().toISOString(),
+                              notes: null,
+                              splitMethod,
+                              status: "logged",
+                              splits
+                            });
+                            setExpenseTitle("");
+                            setExpenseAmount("");
+                            setExpenseStatus("Expense saved.");
+                            await loadAll();
+                          } catch (err) {
+                            setExpenseStatus(err instanceof Error ? err.message : "Unable to save expense.");
+                          }
+                        }}
+                        type="button"
+                      >
+                        Add expense
+                      </button>
+                    </div>
                     {expenseStatus ? <p className="text-xs text-slate-500">{expenseStatus}</p> : null}
                   </div>
                 </>
               ) : null}
-            </section>
 
-            <section className="wb-surface p-4">
-              <h3 className="wb-title text-base">Members</h3>
-              <div className="mt-3 space-y-2">
-                {membersData?.members.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between rounded border p-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span>{member.user.name || member.user.email || member.userId}</span>
-                      {sessionUser?.id === member.userId ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">You</span>
-                      ) : null}
-                    </div>
-                    <span className="text-xs text-slate-500">{member.role}</span>
-                  </div>
-                ))}
-              </div>
-              {canManageMembers ? (
-                <div className="mt-3 grid gap-2">
-                  <input
-                    className="wb-input"
-                    onChange={(event) => setInviteEmail(event.target.value)}
-                    placeholder="friend@example.com"
-                    type="email"
-                    value={inviteEmail}
-                  />
-                  <div className="flex gap-2">
-                    <select
-                      className="rounded-lg border border-slate-200 p-2 text-sm"
-                      onChange={(event) => setInviteRole(event.target.value as "editor" | "viewer")}
-                      value={inviteRole}
-                    >
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                    <button
-                      className="wb-btn-primary !px-3 !py-1.5 !text-xs"
-                      onClick={async () => {
-                        if (!inviteEmail.trim()) return;
-                        setInviteStatus("Sending...");
-                        try {
-                          await apiClient.createWaybookInvite(waybookId, { email: inviteEmail.trim(), role: inviteRole });
-                          setInviteEmail("");
-                          setInviteStatus("Invite sent.");
-                          await loadAll();
-                        } catch (err) {
-                          setInviteStatus(err instanceof Error ? err.message : "Unable to send invite.");
-                        }
-                      }}
-                      type="button"
-                    >
-                      Invite
-                    </button>
-                  </div>
-                  {inviteStatus ? <p className="text-xs text-slate-500">{inviteStatus}</p> : null}
+              {accessRole === "owner" ? (
+                <div className="mt-6 border-t border-slate-100 pt-4">
+                  <h3 className="wb-title text-base text-red-700">Danger zone</h3>
+                  <p className="mt-1 text-xs text-red-700">Delete this trip permanently.</p>
+                  <button
+                    className="mt-3 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700"
+                    onClick={() => {
+                      setDeleteConfirmText("");
+                      setShowDeleteModal(true);
+                    }}
+                    type="button"
+                  >
+                    Delete trip
+                  </button>
                 </div>
               ) : null}
             </section>
-
-            <section className="wb-surface p-4">
-              <h3 className="wb-title text-base">Trip channel</h3>
-              <div className="mt-3 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                {tripMessages.map((message) => (
-                  <div key={message.id} className="rounded bg-slate-50 p-2 text-sm">
-                    <p>{message.body}</p>
-                    <p className="mt-1 text-[11px] text-slate-500">{new Date(message.createdAt).toLocaleString()}</p>
-                  </div>
-                ))}
-                {!tripMessages.length ? <p className="text-xs text-slate-500">No messages yet.</p> : null}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <input className="wb-input" onChange={(e) => setMessageText(e.target.value)} placeholder="Message the trip..." value={messageText} />
-                <button
-                  className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
-                  onClick={async () => {
-                    if (!messageText.trim()) return;
-                    await apiClient.createMessage(waybookId, {
-                      scope: "trip",
-                      threadKey: "trip:main",
-                      body: messageText.trim()
-                    });
-                    setMessageText("");
-                    await loadAll();
-                  }}
-                  type="button"
-                >
-                  Send
-                </button>
-              </div>
-            </section>
-
-            {accessRole === "owner" ? (
-              <section className="wb-surface p-4">
-                <h3 className="wb-title text-base">Delete trip</h3>
-                <p className="mt-1 text-xs text-red-700">
-                  This permanently deletes the trip, entries, bookings, expenses, and member access.
-                </p>
-                <p className="mt-2 text-xs text-slate-600">
-                  Type <code className="rounded bg-slate-100 px-1 py-0.5">{`delete ${timeline.waybook.title}`}</code> to confirm.
-                </p>
-                <input
-                  className="wb-input mt-2"
-                  onChange={(event) => setDeleteConfirmText(event.target.value)}
-                  placeholder={`delete ${timeline.waybook.title}`}
-                  value={deleteConfirmText}
-                />
-                <button
-                  className="mt-2 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
-                  disabled={deletingTrip || !deleteConfirmText.trim()}
-                  onClick={async () => {
-                    setDeletingTrip(true);
-                    try {
-                      await apiClient.deleteWaybook(waybookId, { confirmationText: deleteConfirmText });
-                      router.replace("/");
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Unable to delete trip.");
-                    } finally {
-                      setDeletingTrip(false);
-                    }
-                  }}
-                  type="button"
-                >
-                  {deletingTrip ? "Deleting..." : "Delete trip"}
-                </button>
-              </section>
-            ) : null}
-          </aside>
+          ) : null}
         </div>
       </PageShell>
+      {showDeleteModal ? (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="wb-surface w-full max-w-md p-5">
+            <h3 className="wb-title text-lg">Delete trip</h3>
+            <p className="mt-1 text-sm text-red-700">
+              This permanently deletes the trip, entries, bookings, expenses, and member access.
+            </p>
+            <p className="mt-3 text-xs text-slate-600">
+              Type <code className="rounded bg-slate-100 px-1 py-0.5">{`delete ${timeline.waybook.title}`}</code> to confirm.
+            </p>
+            <input
+              className="wb-input mt-2"
+              onChange={(event) => setDeleteConfirmText(event.target.value)}
+              placeholder={`delete ${timeline.waybook.title}`}
+              value={deleteConfirmText}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button className="wb-btn-secondary !px-3 !py-1.5 !text-xs" onClick={() => setShowDeleteModal(false)} type="button">
+                Cancel
+              </button>
+              <button
+                className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
+                disabled={deletingTrip || !deleteConfirmText.trim()}
+                onClick={async () => {
+                  setDeletingTrip(true);
+                  try {
+                    await apiClient.deleteWaybook(waybookId, { confirmationText: deleteConfirmText });
+                    router.replace("/");
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Unable to delete trip.");
+                  } finally {
+                    setDeletingTrip(false);
+                  }
+                }}
+                type="button"
+              >
+                {deletingTrip ? "Deleting..." : "Delete trip"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
