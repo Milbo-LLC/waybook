@@ -87,3 +87,29 @@ export const notificationTypeSchema = z.enum([
   "summary_prompt"
 ]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
+
+export const tripStageSchema = z.enum([
+  "destinations",
+  "activities",
+  "booking",
+  "itinerary",
+  "prep",
+  "capture",
+  "replay"
+]);
+export type TripStage = z.infer<typeof tripStageSchema>;
+
+export const stageStatusSchema = z.enum(["locked", "available", "complete"]);
+export type StageStatus = z.infer<typeof stageStatusSchema>;
+
+export const destinationStatusSchema = z.enum(["proposed", "locked", "rejected"]);
+export type DestinationStatus = z.infer<typeof destinationStatusSchema>;
+
+export const activityStatusSchema = z.enum(["suggested", "shortlisted", "locked", "discarded"]);
+export type ActivityStatus = z.infer<typeof activityStatusSchema>;
+
+export const messageScopeSchema = z.enum(["trip", "dm"]);
+export type MessageScope = z.infer<typeof messageScopeSchema>;
+
+export const messageDeliveryStatusSchema = z.enum(["sent", "failed", "read"]);
+export type MessageDeliveryStatus = z.infer<typeof messageDeliveryStatusSchema>;

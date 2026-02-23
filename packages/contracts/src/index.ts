@@ -5,6 +5,7 @@ export * from "./entries.js";
 export * from "./enums.js";
 export * from "./experience.js";
 export * from "./media.js";
+export * from "./lifecycle.js";
 export * from "./planning.js";
 export * from "./prompts.js";
 export * from "./public.js";

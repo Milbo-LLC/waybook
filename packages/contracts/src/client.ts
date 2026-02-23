@@ -10,6 +10,18 @@ import type {
   CreateExpenseInput,
   CreateInviteInput,
   CreateInviteResponse,
+  CreateDestinationInput,
+  CreateDestinationVoteInput,
+  CreateActivityVoteInput,
+  RunActivityResearchInput,
+  UpdateActivityStatusInput,
+  StaysRecommendInput,
+  EmbeddedCheckoutSessionInput,
+  EmbeddedCheckoutSessionResponse,
+  EmbeddedCheckoutCompleteInput,
+  CreateChecklistItemInput,
+  UpdateChecklistItemInput,
+  CreateTripMessageInput,
   CreateItineraryEventInput,
   CreatePlanningCommentInput,
   CreatePlanningItemInput,
@@ -20,6 +32,7 @@ import type {
   CreateUploadUrlInput,
   CreateWaybookInput,
   DaySummaryDTO,
+  DestinationDTO,
   ExpenseEntryDTO,
   EntryDTO,
   EntryGuidanceDTO,
@@ -32,6 +45,12 @@ import type {
   ListMembersResponse,
   ListPlanningCommentsResponse,
   ListPlanningItemsResponse,
+  ListDestinationsResponse,
+  ListActivityCandidatesResponse,
+  ListStayRecommendationsResponse,
+  ListChecklistItemsResponse,
+  ListTripMessagesResponse,
+  ListDMThreadsResponse,
   ListTasksResponse,
   ListWaybookBookingsResponse,
   ListWaybookExpensesResponse,
@@ -43,7 +62,12 @@ import type {
   PromptDTO,
   SettlementSummaryResponse,
   TimelineResponse,
+  TripStageStateDTO,
+  ReadinessScoreDTO,
+  ItineraryGenerationResultDTO,
+  ChecklistItemDTO,
   TripTaskDTO,
+  TripMessageDTO,
   UpsertDaySummaryInput,
   UpsertEntryGuidanceInput,
   UpsertEntryRatingInput,
@@ -168,6 +192,118 @@ export class WaybookApiClient {
       method: "POST",
       body: {}
     });
+  }
+
+  getStageState(waybookId: string) {
+    return this.request<TripStageStateDTO>(`/v1/waybooks/${waybookId}/stage-state`);
+  }
+
+  advanceStage(waybookId: string) {
+    return this.request<TripStageStateDTO>(`/v1/waybooks/${waybookId}/stage/advance`, { method: "POST", body: {} });
+  }
+
+  recalculateStage(waybookId: string) {
+    return this.request<TripStageStateDTO>(`/v1/waybooks/${waybookId}/stage/recalculate`, { method: "POST", body: {} });
+  }
+
+  listDestinations(waybookId: string) {
+    return this.request<ListDestinationsResponse>(`/v1/waybooks/${waybookId}/destinations`);
+  }
+
+  createDestination(waybookId: string, input: CreateDestinationInput) {
+    return this.request<DestinationDTO>(`/v1/waybooks/${waybookId}/destinations`, { method: "POST", body: input });
+  }
+
+  voteDestination(destinationId: string, input: CreateDestinationVoteInput) {
+    return this.request<{ success: true }>(`/v1/destinations/${destinationId}/votes`, { method: "POST", body: input });
+  }
+
+  lockDestination(destinationId: string) {
+    return this.request<{ success: true }>(`/v1/destinations/${destinationId}/lock`, { method: "POST", body: {} });
+  }
+
+  unlockDestination(destinationId: string) {
+    return this.request<{ success: true }>(`/v1/destinations/${destinationId}/unlock`, { method: "POST", body: {} });
+  }
+
+  runActivityResearch(waybookId: string, input: RunActivityResearchInput) {
+    return this.request<ListActivityCandidatesResponse>(`/v1/waybooks/${waybookId}/activities/research`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  listActivityCandidates(waybookId: string) {
+    return this.request<ListActivityCandidatesResponse>(`/v1/waybooks/${waybookId}/activities`);
+  }
+
+  voteActivity(activityId: string, input: CreateActivityVoteInput) {
+    return this.request<{ success: true }>(`/v1/activities/${activityId}/votes`, { method: "POST", body: input });
+  }
+
+  lockActivity(activityId: string) {
+    return this.request<{ success: true }>(`/v1/activities/${activityId}/lock`, { method: "POST", body: {} });
+  }
+
+  shortlistActivity(activityId: string) {
+    return this.request<{ success: true }>(`/v1/activities/${activityId}/shortlist`, { method: "POST", body: {} });
+  }
+
+  updateActivityStatus(activityId: string, input: UpdateActivityStatusInput) {
+    return this.request<{ success: true }>(`/v1/activities/${activityId}/status`, { method: "POST", body: input });
+  }
+
+  recommendStays(waybookId: string, input: StaysRecommendInput) {
+    return this.request<ListStayRecommendationsResponse>(`/v1/waybooks/${waybookId}/stays/recommend`, { method: "POST", body: input });
+  }
+
+  createEmbeddedCheckoutSession(bookingId: string, input: EmbeddedCheckoutSessionInput) {
+    return this.request<EmbeddedCheckoutSessionResponse>(`/v1/bookings/${bookingId}/embedded-checkout-session`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  completeEmbeddedCheckout(bookingId: string, input: EmbeddedCheckoutCompleteInput) {
+    return this.request<{ success: true }>(`/v1/bookings/${bookingId}/embedded-checkout-complete`, { method: "POST", body: input });
+  }
+
+  generateItinerary(waybookId: string) {
+    return this.request<ItineraryGenerationResultDTO>(`/v1/waybooks/${waybookId}/itinerary/generate`, { method: "POST", body: {} });
+  }
+
+  listChecklistItems(waybookId: string) {
+    return this.request<ListChecklistItemsResponse>(`/v1/waybooks/${waybookId}/checklist`);
+  }
+
+  createChecklistItem(waybookId: string, input: CreateChecklistItemInput) {
+    return this.request<ChecklistItemDTO>(`/v1/waybooks/${waybookId}/checklist`, { method: "POST", body: input });
+  }
+
+  updateChecklistItem(itemId: string, input: UpdateChecklistItemInput) {
+    return this.request<ChecklistItemDTO>(`/v1/checklist/${itemId}`, { method: "PATCH", body: input });
+  }
+
+  getReadinessScore(waybookId: string) {
+    return this.request<ReadinessScoreDTO>(`/v1/waybooks/${waybookId}/readiness-score`);
+  }
+
+  listMessages(waybookId: string, scope: "trip" | "dm", threadKey?: string) {
+    const query = new URLSearchParams({ scope });
+    if (threadKey) query.set("threadKey", threadKey);
+    return this.request<ListTripMessagesResponse>(`/v1/waybooks/${waybookId}/messages?${query.toString()}`);
+  }
+
+  createMessage(waybookId: string, input: CreateTripMessageInput) {
+    return this.request<TripMessageDTO>(`/v1/waybooks/${waybookId}/messages`, { method: "POST", body: input });
+  }
+
+  markMessageRead(messageId: string) {
+    return this.request<{ success: true }>(`/v1/messages/${messageId}/read`, { method: "POST", body: {} });
+  }
+
+  listDMThreads(waybookId: string) {
+    return this.request<ListDMThreadsResponse>(`/v1/waybooks/${waybookId}/dm-threads`);
   }
 
   listPlanningItems(waybookId: string) {
