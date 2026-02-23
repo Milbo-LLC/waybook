@@ -31,6 +31,7 @@ import type {
   CreateEntryInput,
   CreateUploadUrlInput,
   CreateWaybookInput,
+  DeleteWaybookInput,
   DaySummaryDTO,
   DestinationDTO,
   ExpenseEntryDTO,
@@ -78,8 +79,10 @@ import type {
   UpdateNotificationRuleInput,
   UpdatePlanningItemInput,
   UpdateTaskInput,
+  UpdateTripPreferencesInput,
   UpdateEntryInput,
   UpdateWaybookInput,
+  TripPreferencesDTO,
   WaybookDTO
 } from "./index.js";
 
@@ -142,6 +145,10 @@ export class WaybookApiClient {
 
   updateWaybook(waybookId: string, input: UpdateWaybookInput) {
     return this.request<WaybookDTO>(`/v1/waybooks/${waybookId}`, { method: "PATCH", body: input });
+  }
+
+  deleteWaybook(waybookId: string, input: DeleteWaybookInput) {
+    return this.request<{ success: true }>(`/v1/waybooks/${waybookId}/delete-confirm`, { method: "POST", body: input });
   }
 
   listWaybookMembers(waybookId: string) {
@@ -399,9 +406,22 @@ export class WaybookApiClient {
   }
 
   getBudgetSummary(waybookId: string) {
-    return this.request<{ totalBaseAmountMinor: number; currency: string; byCategory: Array<{ category: string; amountMinor: number }> }>(
-      `/v1/waybooks/${waybookId}/budget-summary`
-    );
+    return this.request<{
+      totalBaseAmountMinor: number;
+      currency: string;
+      budgetAmountMinor: number | null;
+      budgetCurrency: string;
+      remainingAmountMinor: number | null;
+      byCategory: Array<{ category: string; amountMinor: number }>;
+    }>(`/v1/waybooks/${waybookId}/budget-summary`);
+  }
+
+  getTripPreferences(waybookId: string) {
+    return this.request<TripPreferencesDTO>(`/v1/waybooks/${waybookId}/preferences`);
+  }
+
+  updateTripPreferences(waybookId: string, input: UpdateTripPreferencesInput) {
+    return this.request<TripPreferencesDTO>(`/v1/waybooks/${waybookId}/preferences`, { method: "PATCH", body: input });
   }
 
   listItineraryEvents(waybookId: string) {

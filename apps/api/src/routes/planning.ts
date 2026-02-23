@@ -16,6 +16,7 @@ import {
   updateItineraryEventInputSchema,
   updateNotificationRuleInputSchema,
   updatePlanningItemInputSchema,
+  updateTripPreferencesInputSchema,
   updateTripTaskInputSchema
 } from "@waybook/contracts";
 import { schema } from "@waybook/db";
@@ -179,6 +180,20 @@ const mapNotificationEvent = (row: typeof schema.notificationEvents.$inferSelect
   status: row.status,
   error: row.error,
   createdAt: row.createdAt.toISOString()
+});
+
+const mapTripPreferences = (row: typeof schema.tripPreferences.$inferSelect) => ({
+  waybookId: row.waybookId,
+  baseCurrency: row.baseCurrency,
+  budgetAmountMinor: row.budgetAmountMinor,
+  budgetCurrency: row.budgetCurrency,
+  defaultSplitMethod: row.defaultSplitMethod,
+  pace: row.pace,
+  budgetTier: row.budgetTier,
+  accessibilityNotes: row.accessibilityNotes,
+  quietHoursStart: row.quietHoursStart,
+  quietHoursEnd: row.quietHoursEnd,
+  updatedAt: row.updatedAt.toISOString()
 });
 
 planningRoutes.post(
@@ -712,6 +727,9 @@ planningRoutes.post(
     const access = await getWaybookAccess(db, waybookId, user.id);
     if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
 
+    const [prefs] = await db.select().from(schema.tripPreferences).where(eq(schema.tripPreferences.waybookId, waybookId)).limit(1);
+    const splitMethod = payload.splitMethod ?? prefs?.defaultSplitMethod ?? "equal";
+
     const [created] = await db
       .insert(schema.expenseEntries)
       .values({
@@ -727,7 +745,7 @@ planningRoutes.post(
         fxRate: payload.fxRate ?? null,
         incurredAt: new Date(payload.incurredAt),
         notes: payload.notes ?? null,
-        splitMethod: payload.splitMethod ?? "equal",
+        splitMethod,
         status: payload.status ?? "logged"
       })
       .returning();
@@ -941,10 +959,11 @@ planningRoutes.get("/waybooks/:waybookId/budget-summary", requireAuthMiddleware,
   if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
 
   const rows = await db.select().from(schema.expenseEntries).where(eq(schema.expenseEntries.waybookId, waybookId));
+  const [prefs] = await db.select().from(schema.tripPreferences).where(eq(schema.tripPreferences.waybookId, waybookId)).limit(1);
 
   const byCategory = new Map<string, number>();
   let totalBaseAmountMinor = 0;
-  let currency = "USD";
+  let currency = prefs?.baseCurrency ?? "USD";
   for (const row of rows) {
     totalBaseAmountMinor += row.tripBaseAmountMinor;
     currency = row.tripBaseCurrency;
@@ -952,12 +971,88 @@ planningRoutes.get("/waybooks/:waybookId/budget-summary", requireAuthMiddleware,
     byCategory.set(category, (byCategory.get(category) ?? 0) + row.tripBaseAmountMinor);
   }
 
+  const budgetAmountMinor = prefs?.budgetAmountMinor ?? null;
+
   return c.json({
     totalBaseAmountMinor,
     currency,
+    budgetAmountMinor,
+    budgetCurrency: prefs?.budgetCurrency ?? currency,
+    remainingAmountMinor: budgetAmountMinor !== null ? budgetAmountMinor - totalBaseAmountMinor : null,
     byCategory: [...byCategory.entries()].map(([category, amountMinor]) => ({ category, amountMinor }))
   });
 });
+
+planningRoutes.get("/waybooks/:waybookId/preferences", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const waybookId = c.req.param("waybookId");
+
+  const access = await getWaybookAccess(db, waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
+
+  const [existing] = await db.select().from(schema.tripPreferences).where(eq(schema.tripPreferences.waybookId, waybookId)).limit(1);
+  if (existing) return c.json(mapTripPreferences(existing));
+
+  const [created] = await db
+    .insert(schema.tripPreferences)
+    .values({ waybookId, baseCurrency: "USD", budgetCurrency: "USD", defaultSplitMethod: "equal" })
+    .returning();
+
+  if (!created) return c.json({ error: "create_failed" }, 500);
+  return c.json(mapTripPreferences(created));
+});
+
+planningRoutes.patch(
+  "/waybooks/:waybookId/preferences",
+  requireAuthMiddleware,
+  zValidator("json", updateTripPreferencesInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const payload = c.req.valid("json");
+
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
+
+    await db
+      .insert(schema.tripPreferences)
+      .values({
+        waybookId,
+        baseCurrency: payload.baseCurrency ?? "USD",
+        budgetAmountMinor: payload.budgetAmountMinor ?? null,
+        budgetCurrency: payload.budgetCurrency ?? payload.baseCurrency ?? "USD",
+        defaultSplitMethod: payload.defaultSplitMethod ?? "equal",
+        pace: payload.pace ?? null,
+        budgetTier: payload.budgetTier ?? null,
+        accessibilityNotes: payload.accessibilityNotes ?? null,
+        quietHoursStart: payload.quietHoursStart ?? null,
+        quietHoursEnd: payload.quietHoursEnd ?? null
+      })
+      .onConflictDoNothing();
+
+    const updates: Partial<typeof schema.tripPreferences.$inferInsert> = { updatedAt: new Date() };
+    if (payload.baseCurrency !== undefined) updates.baseCurrency = payload.baseCurrency;
+    if (payload.budgetAmountMinor !== undefined) updates.budgetAmountMinor = payload.budgetAmountMinor;
+    if (payload.budgetCurrency !== undefined) updates.budgetCurrency = payload.budgetCurrency;
+    if (payload.defaultSplitMethod !== undefined) updates.defaultSplitMethod = payload.defaultSplitMethod;
+    if (payload.pace !== undefined) updates.pace = payload.pace;
+    if (payload.budgetTier !== undefined) updates.budgetTier = payload.budgetTier;
+    if (payload.accessibilityNotes !== undefined) updates.accessibilityNotes = payload.accessibilityNotes;
+    if (payload.quietHoursStart !== undefined) updates.quietHoursStart = payload.quietHoursStart;
+    if (payload.quietHoursEnd !== undefined) updates.quietHoursEnd = payload.quietHoursEnd;
+
+    const [updated] = await db
+      .update(schema.tripPreferences)
+      .set(updates)
+      .where(eq(schema.tripPreferences.waybookId, waybookId))
+      .returning();
+
+    if (!updated) return c.json({ error: "not_found" }, 404);
+    return c.json(mapTripPreferences(updated));
+  }
+);
 
 planningRoutes.post(
   "/entries/:entryId/itinerary-links",

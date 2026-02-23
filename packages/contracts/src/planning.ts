@@ -326,3 +326,31 @@ export const ackNotificationInputSchema = z.object({
   status: z.enum(["acked", "dismissed"]).default("acked")
 });
 export type AckNotificationInput = z.infer<typeof ackNotificationInputSchema>;
+
+export const tripPreferencesDtoSchema = z.object({
+  waybookId: idSchema,
+  baseCurrency: z.string().max(8),
+  budgetAmountMinor: z.number().int().nullable(),
+  budgetCurrency: z.string().max(8),
+  defaultSplitMethod: expenseSplitMethodSchema,
+  pace: z.string().nullable(),
+  budgetTier: z.string().nullable(),
+  accessibilityNotes: z.string().nullable(),
+  quietHoursStart: z.string().nullable(),
+  quietHoursEnd: z.string().nullable(),
+  updatedAt: isoDateTimeSchema
+});
+export type TripPreferencesDTO = z.infer<typeof tripPreferencesDtoSchema>;
+
+export const updateTripPreferencesInputSchema = z.object({
+  baseCurrency: z.string().min(3).max(8).optional(),
+  budgetAmountMinor: z.number().int().nullable().optional(),
+  budgetCurrency: z.string().min(3).max(8).optional(),
+  defaultSplitMethod: expenseSplitMethodSchema.optional(),
+  pace: z.string().max(40).nullable().optional(),
+  budgetTier: z.string().max(40).nullable().optional(),
+  accessibilityNotes: z.string().max(5000).nullable().optional(),
+  quietHoursStart: z.string().max(5).nullable().optional(),
+  quietHoursEnd: z.string().max(5).nullable().optional()
+});
+export type UpdateTripPreferencesInput = z.infer<typeof updateTripPreferencesInputSchema>;

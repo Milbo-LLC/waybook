@@ -35,7 +35,12 @@ const createActivityResearchCandidates = (destinationName: string, maxPerDestina
   return seeds.slice(0, maxPerDestination);
 };
 
-const mapStageState = async (db: AppBindings["Variables"]["db"], waybookId: string, waybookStartDate: string, waybookEndDate: string) => {
+const mapStageState = async (
+  db: AppBindings["Variables"]["db"],
+  waybookId: string,
+  waybookStartDate: string | null,
+  waybookEndDate: string | null
+) => {
   const [lockedDestinationCount] = await db
     .select({ value: count() })
     .from(schema.tripDestinations)
@@ -85,8 +90,9 @@ const mapStageState = async (db: AppBindings["Variables"]["db"], waybookId: stri
     );
 
   const nowDate = new Date().toISOString().slice(0, 10);
-  const isTripLive = nowDate >= waybookStartDate;
-  const isTripEnded = nowDate > waybookEndDate;
+  const hasExactDates = Boolean(waybookStartDate && waybookEndDate);
+  const isTripLive = hasExactDates ? nowDate >= (waybookStartDate as string) : false;
+  const isTripEnded = hasExactDates ? nowDate > (waybookEndDate as string) : false;
   const lockedDestinationTotal = lockedDestinationCount?.value ?? 0;
   const lockedActivityTotal = lockedActivityCount?.value ?? 0;
   const confirmedStayTotal = confirmedStayCount?.value ?? 0;

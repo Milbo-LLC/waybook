@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   createInviteInputSchema,
   createPublicReactionInputSchema,
+  deleteWaybookInputSchema,
   createWaybookInputSchema,
   type DaySummaryDTO,
   type CreateWaybookInput,
@@ -92,8 +93,11 @@ waybookRoutes.post("/waybooks", requireAuthMiddleware, zValidator("json", create
       userId: user.id,
       title: payload.title,
       description: payload.description,
-      startDate: payload.startDate,
-      endDate: payload.endDate,
+      startDate: payload.startDate ?? null,
+      endDate: payload.endDate ?? null,
+      timeframeLabel: payload.timeframeLabel ?? null,
+      earliestStartDate: payload.earliestStartDate ?? null,
+      latestEndDate: payload.latestEndDate ?? null,
       visibility: payload.visibility,
       publicSlug
     })
@@ -169,6 +173,9 @@ waybookRoutes.patch(
     if (payload.description !== undefined) updates.description = payload.description;
     if (payload.startDate !== undefined) updates.startDate = payload.startDate;
     if (payload.endDate !== undefined) updates.endDate = payload.endDate;
+    if (payload.timeframeLabel !== undefined) updates.timeframeLabel = payload.timeframeLabel;
+    if (payload.earliestStartDate !== undefined) updates.earliestStartDate = payload.earliestStartDate;
+    if (payload.latestEndDate !== undefined) updates.latestEndDate = payload.latestEndDate;
     if (payload.coverMediaId !== undefined) updates.coverMediaId = payload.coverMediaId;
     if (payload.visibility !== undefined) updates.visibility = payload.visibility;
 
@@ -209,6 +216,32 @@ waybookRoutes.delete("/waybooks/:waybookId", requireAuthMiddleware, async (c) =>
   if (!deleted) return c.json({ error: "not_found" }, 404);
   return c.body(null, 204);
 });
+
+waybookRoutes.post(
+  "/waybooks/:waybookId/delete-confirm",
+  requireAuthMiddleware,
+  zValidator("json", deleteWaybookInputSchema),
+  async (c) => {
+    const db = c.get("db");
+    const user = c.get("user");
+    const waybookId = c.req.param("waybookId");
+    const payload = c.req.valid("json");
+    const access = await getWaybookAccess(db, waybookId, user.id);
+    if (!access || !hasMinimumRole(access.role, "owner")) return c.json({ error: "not_found" }, 404);
+
+    const requiredText = `delete ${access.waybook.title}`.toLowerCase();
+    if (payload.confirmationText.trim().toLowerCase() !== requiredText) {
+      return c.json({ error: "confirmation_mismatch", requiredText }, 400);
+    }
+
+    const [deleted] = await db
+      .delete(schema.waybooks)
+      .where(eq(schema.waybooks.id, waybookId))
+      .returning({ id: schema.waybooks.id });
+    if (!deleted) return c.json({ error: "not_found" }, 404);
+    return c.json({ success: true });
+  }
+);
 
 waybookRoutes.post(
   "/waybooks/:waybookId/share-links",

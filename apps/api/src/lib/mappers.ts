@@ -15,8 +15,11 @@ type WaybookRow = {
   userId: string;
   title: string;
   description: string | null;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
+  timeframeLabel: string | null;
+  earliestStartDate: string | null;
+  latestEndDate: string | null;
   coverMediaId: string | null;
   visibility: "private" | "link_only" | "public";
   publicSlug: string | null;

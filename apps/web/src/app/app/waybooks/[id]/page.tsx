@@ -62,6 +62,8 @@ export default function WaybookGuidedLifecyclePage() {
   const [checklist, setChecklist] = useState<Awaited<ReturnType<typeof apiClient.listChecklistItems>>["items"]>([]);
   const [readiness, setReadiness] = useState<Awaited<ReturnType<typeof apiClient.getReadinessScore>> | null>(null);
   const [tripMessages, setTripMessages] = useState<Awaited<ReturnType<typeof apiClient.listMessages>>["items"]>([]);
+  const [tripPreferences, setTripPreferences] = useState<Awaited<ReturnType<typeof apiClient.getTripPreferences>> | null>(null);
+  const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof apiClient.getBudgetSummary>> | null>(null);
 
   const [destinationName, setDestinationName] = useState("");
   const [destinationRationale, setDestinationRationale] = useState("");
@@ -73,6 +75,15 @@ export default function WaybookGuidedLifecyclePage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetCurrencyInput, setBudgetCurrencyInput] = useState("USD");
+  const [splitMethodInput, setSplitMethodInput] = useState<"equal" | "custom" | "percentage" | "shares">("equal");
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expensePayerId, setExpensePayerId] = useState("");
+  const [expenseStatus, setExpenseStatus] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingTrip, setDeletingTrip] = useState(false);
 
   const [savingCapture, setSavingCapture] = useState(false);
   const [captureStatus, setCaptureStatus] = useState<string | null>(null);
@@ -123,7 +134,9 @@ export default function WaybookGuidedLifecyclePage() {
       itineraryResponse,
       checklistResponse,
       readinessResponse,
-      messagesResponse
+      messagesResponse,
+      tripPreferencesResponse,
+      budgetSummaryResponse
     ] = await Promise.all([
       apiClient.getTimeline(waybookId),
       apiClient.listEntries(waybookId),
@@ -135,7 +148,9 @@ export default function WaybookGuidedLifecyclePage() {
       apiClient.listItineraryEvents(waybookId),
       apiClient.listChecklistItems(waybookId),
       apiClient.getReadinessScore(waybookId),
-      apiClient.listMessages(waybookId, "trip", "trip:main")
+      apiClient.listMessages(waybookId, "trip", "trip:main"),
+      apiClient.getTripPreferences(waybookId),
+      apiClient.getBudgetSummary(waybookId)
     ]);
 
     setTimeline(timelineResponse);
@@ -154,6 +169,15 @@ export default function WaybookGuidedLifecyclePage() {
     setChecklist(checklistResponse.items);
     setReadiness(readinessResponse);
     setTripMessages(messagesResponse.items);
+    setTripPreferences(tripPreferencesResponse);
+    setBudgetSummary(budgetSummaryResponse);
+    setBudgetInput(tripPreferencesResponse.budgetAmountMinor !== null ? (tripPreferencesResponse.budgetAmountMinor / 100).toFixed(2) : "");
+    setBudgetCurrencyInput(tripPreferencesResponse.budgetCurrency || tripPreferencesResponse.baseCurrency || "USD");
+    setSplitMethodInput(tripPreferencesResponse.defaultSplitMethod);
+    if (!expensePayerId) {
+      const ownerId = timelineResponse.waybook.userId;
+      setExpensePayerId(ownerId);
+    }
   };
 
   useEffect(() => {
@@ -329,7 +353,15 @@ export default function WaybookGuidedLifecyclePage() {
                 </button>
                 <h1 className="wb-title truncate text-2xl leading-tight">{timeline.waybook.title}</h1>
               </div>
-              <p className="wb-muted mt-1 text-sm">{formatTripDateRange(timeline.waybook.startDate, timeline.waybook.endDate)}</p>
+              <p className="wb-muted mt-1 text-sm">
+                {formatTripDateRange(
+                  timeline.waybook.startDate,
+                  timeline.waybook.endDate,
+                  timeline.waybook.timeframeLabel,
+                  timeline.waybook.earliestStartDate,
+                  timeline.waybook.latestEndDate
+                )}
+              </p>
               {timeline.waybook.description ? <p className="wb-muted mt-2 text-sm">{timeline.waybook.description}</p> : null}
             </div>
             {readiness ? (
@@ -876,6 +908,162 @@ export default function WaybookGuidedLifecyclePage() {
 
           <aside className="space-y-4">
             <section className="wb-surface p-4">
+              <h3 className="wb-title text-base">Budget and expenses</h3>
+              <p className="wb-muted mt-1 text-xs">Track spend by payer and split with your trip defaults.</p>
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Spent</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {budgetSummary
+                    ? `${(budgetSummary.totalBaseAmountMinor / 100).toLocaleString(undefined, {
+                        style: "currency",
+                        currency: budgetSummary.currency || "USD"
+                      })}`
+                    : "—"}
+                </p>
+                {budgetSummary && budgetSummary.budgetAmountMinor !== null ? (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Remaining{" "}
+                    {(Number(budgetSummary?.remainingAmountMinor ?? 0) / 100).toLocaleString(undefined, {
+                      style: "currency",
+                      currency: budgetSummary?.budgetCurrency || budgetSummary?.currency || "USD"
+                    })}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">No trip budget set yet.</p>
+                )}
+              </div>
+              {canEdit ? (
+                <>
+                  <div className="mt-3 grid gap-2">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+                      <input
+                        className="wb-input"
+                        min="0"
+                        onChange={(event) => setBudgetInput(event.target.value)}
+                        placeholder="Budget (optional)"
+                        step="0.01"
+                        type="number"
+                        value={budgetInput}
+                      />
+                      <input
+                        className="wb-input uppercase"
+                        maxLength={8}
+                        onChange={(event) => setBudgetCurrencyInput(event.target.value.toUpperCase())}
+                        value={budgetCurrencyInput}
+                      />
+                    </div>
+                    <select
+                      className="wb-input"
+                      onChange={(event) => setSplitMethodInput(event.target.value as "equal" | "custom" | "percentage" | "shares")}
+                      value={splitMethodInput}
+                    >
+                      <option value="equal">Equal split</option>
+                      <option value="percentage">Percentage split</option>
+                      <option value="shares">Shares split</option>
+                      <option value="custom">Custom split</option>
+                    </select>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        const budgetAmountMinor = budgetInput.trim() ? Math.round(Number(budgetInput) * 100) : null;
+                        await apiClient.updateTripPreferences(waybookId, {
+                          budgetAmountMinor: Number.isFinite(budgetAmountMinor) ? budgetAmountMinor : null,
+                          budgetCurrency: budgetCurrencyInput,
+                          baseCurrency: budgetCurrencyInput,
+                          defaultSplitMethod: splitMethodInput
+                        });
+                        await loadAll();
+                      }}
+                      type="button"
+                    >
+                      Save budget defaults
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick expense</p>
+                    <input
+                      className="wb-input"
+                      onChange={(event) => setExpenseTitle(event.target.value)}
+                      placeholder="Expense title"
+                      value={expenseTitle}
+                    />
+                    <input
+                      className="wb-input"
+                      min="0"
+                      onChange={(event) => setExpenseAmount(event.target.value)}
+                      placeholder="Amount"
+                      step="0.01"
+                      type="number"
+                      value={expenseAmount}
+                    />
+                    <select className="wb-input" onChange={(event) => setExpensePayerId(event.target.value)} value={expensePayerId}>
+                      {[timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
+                        .filter((value, index, arr) => arr.indexOf(value) === index)
+                        .map((userId) => {
+                          const member = membersData?.members.find((item) => item.userId === userId);
+                          const label = member?.user.name || member?.user.email || userId;
+                          return (
+                            <option key={userId} value={userId}>
+                              Paid by {label}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <button
+                      className="wb-btn-primary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        if (!expenseTitle.trim() || !expenseAmount.trim() || !expensePayerId) return;
+                        setExpenseStatus("Saving expense...");
+                        try {
+                          const amountMinor = Math.round(Number(expenseAmount) * 100);
+                          const participants = [timeline.waybook.userId, ...(membersData?.members ?? []).map((member) => member.userId)]
+                            .filter((value, index, arr) => arr.indexOf(value) === index);
+                          const splitMethod = tripPreferences?.defaultSplitMethod ?? splitMethodInput;
+                          const splits =
+                            splitMethod === "percentage"
+                              ? participants.map((userId) => ({
+                                  userId,
+                                  percentage: Math.floor(100 / Math.max(participants.length, 1))
+                                }))
+                              : splitMethod === "shares"
+                                ? participants.map((userId) => ({ userId, shares: 1 }))
+                                : [];
+
+                          await apiClient.createExpense(waybookId, {
+                            title: expenseTitle.trim(),
+                            category: activeStage,
+                            paidByUserId: expensePayerId,
+                            currency: budgetCurrencyInput,
+                            amountMinor,
+                            tripBaseCurrency: tripPreferences?.baseCurrency || budgetCurrencyInput,
+                            tripBaseAmountMinor: amountMinor,
+                            fxRate: null,
+                            incurredAt: new Date().toISOString(),
+                            notes: null,
+                            splitMethod,
+                            status: "logged",
+                            splits
+                          });
+                          setExpenseTitle("");
+                          setExpenseAmount("");
+                          setExpenseStatus("Expense saved.");
+                          await loadAll();
+                        } catch (err) {
+                          setExpenseStatus(err instanceof Error ? err.message : "Unable to save expense.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Add expense
+                    </button>
+                    {expenseStatus ? <p className="text-xs text-slate-500">{expenseStatus}</p> : null}
+                  </div>
+                </>
+              ) : null}
+            </section>
+
+            <section className="wb-surface p-4">
               <h3 className="wb-title text-base">Members</h3>
               <div className="mt-3 space-y-2">
                 {membersData?.members.map((member) => (
@@ -963,6 +1151,42 @@ export default function WaybookGuidedLifecyclePage() {
                 </button>
               </div>
             </section>
+
+            {accessRole === "owner" ? (
+              <section className="wb-surface p-4">
+                <h3 className="wb-title text-base">Delete trip</h3>
+                <p className="mt-1 text-xs text-red-700">
+                  This permanently deletes the trip, entries, bookings, expenses, and member access.
+                </p>
+                <p className="mt-2 text-xs text-slate-600">
+                  Type <code className="rounded bg-slate-100 px-1 py-0.5">{`delete ${timeline.waybook.title}`}</code> to confirm.
+                </p>
+                <input
+                  className="wb-input mt-2"
+                  onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  placeholder={`delete ${timeline.waybook.title}`}
+                  value={deleteConfirmText}
+                />
+                <button
+                  className="mt-2 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
+                  disabled={deletingTrip || !deleteConfirmText.trim()}
+                  onClick={async () => {
+                    setDeletingTrip(true);
+                    try {
+                      await apiClient.deleteWaybook(waybookId, { confirmationText: deleteConfirmText });
+                      router.replace("/");
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Unable to delete trip.");
+                    } finally {
+                      setDeletingTrip(false);
+                    }
+                  }}
+                  type="button"
+                >
+                  {deletingTrip ? "Deleting..." : "Delete trip"}
+                </button>
+              </section>
+            ) : null}
           </aside>
         </div>
       </PageShell>
