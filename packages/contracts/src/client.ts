@@ -233,6 +233,10 @@ export class WaybookApiClient {
     return this.request<{ success: true }>(`/v1/destinations/${destinationId}/unlock`, { method: "POST", body: {} });
   }
 
+  deleteDestination(destinationId: string) {
+    return this.request<{ success: true }>(`/v1/destinations/${destinationId}`, { method: "DELETE" });
+  }
+
   runActivityResearch(waybookId: string, input: RunActivityResearchInput) {
     return this.request<ListActivityCandidatesResponse>(`/v1/waybooks/${waybookId}/activities/research`, {
       method: "POST",

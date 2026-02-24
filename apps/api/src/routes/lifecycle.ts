@@ -443,6 +443,19 @@ lifecycleRoutes.post("/destinations/:destinationId/unlock", requireAuthMiddlewar
   return c.json({ success: true });
 });
 
+lifecycleRoutes.delete("/destinations/:destinationId", requireAuthMiddleware, async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const destinationId = c.req.param("destinationId");
+  const [destination] = await db.select().from(schema.tripDestinations).where(eq(schema.tripDestinations.id, destinationId)).limit(1);
+  if (!destination) return c.json({ error: "not_found" }, 404);
+  const access = await getWaybookAccess(db, destination.waybookId, user.id);
+  if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
+  if (destination.status === "locked") return c.json({ error: "destination_locked" }, 409);
+  await db.delete(schema.tripDestinations).where(eq(schema.tripDestinations.id, destinationId));
+  return c.json({ success: true });
+});
+
 lifecycleRoutes.post(
   "/waybooks/:waybookId/activities/research",
   requireAuthMiddleware,

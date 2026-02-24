@@ -30,6 +30,15 @@ const stageLabels: Record<StageKey, string> = {
 
 const normalizeWhitespace = (text: string) => text.replace(/\s+/g, " ").trim();
 
+const destinationIdeaPool = [
+  { name: "Lisbon", rationale: "Walkable city, great food, and mild weather." },
+  { name: "Kyoto", rationale: "Culture-heavy destination with standout seasonal scenery." },
+  { name: "Vancouver", rationale: "City + nature balance with easy day trips." },
+  { name: "Costa Rica", rationale: "Nature-first trip with beaches, rainforests, and adventure options." },
+  { name: "Mexico City", rationale: "Strong value, food scene, and culture in one place." },
+  { name: "Amalfi Coast", rationale: "Scenic coastal pace ideal for a celebratory trip." }
+] as const;
+
 const formatDictationText = (raw: string, previousText: string) => {
   const text = normalizeWhitespace(raw);
   if (!text) return "";
@@ -73,6 +82,10 @@ export default function WaybookGuidedLifecyclePage() {
 
   const [destinationName, setDestinationName] = useState("");
   const [destinationRationale, setDestinationRationale] = useState("");
+  const [destinationSearch, setDestinationSearch] = useState("");
+  const [destinationSort, setDestinationSort] = useState<"rank" | "votes" | "newest">("rank");
+  const [destinationFilter, setDestinationFilter] = useState<"all" | "proposed" | "locked">("all");
+  const [destinationStatusMessage, setDestinationStatusMessage] = useState<string | null>(null);
   const [bookingTitle, setBookingTitle] = useState("");
   const [bookingType, setBookingType] = useState<"activity" | "stay" | "transport" | "flight" | "other">("activity");
   const [checklistTitle, setChecklistTitle] = useState("");
@@ -128,6 +141,37 @@ export default function WaybookGuidedLifecyclePage() {
   const canManageMembers = accessRole === "owner";
   const todayDate = new Date().toISOString().slice(0, 10);
   const todaySummary = timeline?.days.find((day) => day.date === todayDate)?.summary ?? null;
+  const destinationIdeas = useMemo(() => {
+    const used = new Set(destinations.map((item) => item.name.trim().toLowerCase()));
+    return destinationIdeaPool.filter((idea) => !used.has(idea.name.toLowerCase())).slice(0, 4);
+  }, [destinations]);
+
+  const destinationRows = useMemo(() => {
+    const search = destinationSearch.trim().toLowerCase();
+    const mapped = destinations.map((item) => {
+      const score = item.votesUp - item.votesDown;
+      const totalVotes = item.votesUp + item.votesDown;
+      return { ...item, score, totalVotes };
+    });
+    return mapped
+      .filter((item) => {
+        if (destinationFilter !== "all" && item.status !== destinationFilter) return false;
+        if (!search) return true;
+        const haystack = `${item.name} ${item.rationale ?? ""}`.toLowerCase();
+        return haystack.includes(search);
+      })
+      .sort((a, b) => {
+        if (destinationSort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        if (destinationSort === "votes") return b.totalVotes - a.totalVotes || b.score - a.score;
+        const aLocked = a.status === "locked" ? 1 : 0;
+        const bLocked = b.status === "locked" ? 1 : 0;
+        return bLocked - aLocked || b.score - a.score || b.votesUp - a.votesUp;
+      });
+  }, [destinationFilter, destinationSearch, destinationSort, destinations]);
+
+  const topDestination = useMemo(() => {
+    return destinationRows.find((item) => item.status !== "locked") ?? destinationRows[0] ?? null;
+  }, [destinationRows]);
 
   const loadAll = async () => {
     if (!waybookId) return;
@@ -480,7 +524,13 @@ export default function WaybookGuidedLifecyclePage() {
             {activeStage === "destinations" && canAccessActiveStage ? (
               <section className="wb-surface p-5">
                 <h2 className="wb-title text-lg">Destination selection</h2>
-                <p className="wb-muted mt-1 text-sm">Propose destinations, vote, then lock finalists.</p>
+                <p className="wb-muted mt-1 text-sm">Propose destinations, vote, compare by support, then lock finalists.</p>
+                {topDestination ? (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    Top candidate: <span className="font-semibold">{topDestination.name}</span> ({topDestination.votesUp} up /{" "}
+                    {topDestination.votesDown} down)
+                  </div>
+                ) : null}
                 <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                   <input
                     className="wb-input"
@@ -499,12 +549,19 @@ export default function WaybookGuidedLifecyclePage() {
                     disabled={!canEdit}
                     onClick={async () => {
                       if (!destinationName.trim()) return;
+                      const normalizedName = destinationName.trim().toLowerCase();
+                      const duplicate = destinations.some((item) => item.name.trim().toLowerCase() === normalizedName);
+                      if (duplicate) {
+                        setDestinationStatusMessage("That destination is already on the list.");
+                        return;
+                      }
                       await apiClient.createDestination(waybookId, {
                         name: destinationName.trim(),
                         rationale: destinationRationale.trim() || null
                       });
                       setDestinationName("");
                       setDestinationRationale("");
+                      setDestinationStatusMessage(null);
                       await loadAll();
                     }}
                     type="button"
@@ -512,8 +569,53 @@ export default function WaybookGuidedLifecyclePage() {
                     Add
                   </button>
                 </div>
+                {destinationIdeas.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {destinationIdeas.map((idea) => (
+                      <button
+                        key={idea.name}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                        onClick={() => {
+                          setDestinationName(idea.name);
+                          setDestinationRationale(idea.rationale);
+                          setDestinationStatusMessage(`Suggestion loaded: ${idea.name}`);
+                        }}
+                        type="button"
+                      >
+                        + {idea.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                  <input
+                    className="wb-input"
+                    onChange={(event) => setDestinationSearch(event.target.value)}
+                    placeholder="Search destinations or rationale"
+                    value={destinationSearch}
+                  />
+                  <select
+                    className="wb-input"
+                    onChange={(event) => setDestinationSort(event.target.value as "rank" | "votes" | "newest")}
+                    value={destinationSort}
+                  >
+                    <option value="rank">Sort: decision rank</option>
+                    <option value="votes">Sort: most votes</option>
+                    <option value="newest">Sort: newest</option>
+                  </select>
+                  <select
+                    className="wb-input"
+                    onChange={(event) => setDestinationFilter(event.target.value as "all" | "proposed" | "locked")}
+                    value={destinationFilter}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="proposed">Proposed only</option>
+                    <option value="locked">Locked only</option>
+                  </select>
+                </div>
+                {destinationStatusMessage ? <p className="mt-2 text-xs text-slate-500">{destinationStatusMessage}</p> : null}
                 <div className="mt-4 space-y-2">
-                  {destinations.map((destination) => (
+                  {destinationRows.map((destination) => (
                     <div key={destination.id} className="rounded-lg border border-slate-200 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -521,6 +623,10 @@ export default function WaybookGuidedLifecyclePage() {
                           <p className="text-xs text-slate-500">
                             {destination.status}
                             {destination.rationale ? ` • ${destination.rationale}` : ""}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Decision score: {destination.score >= 0 ? "+" : ""}
+                            {destination.score} ({destination.totalVotes} votes)
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -569,11 +675,31 @@ export default function WaybookGuidedLifecyclePage() {
                               </button>
                             )
                           ) : null}
+                          {canEdit && destination.status !== "locked" ? (
+                            <button
+                              className="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700"
+                              onClick={async () => {
+                                const ok = window.confirm(`Delete ${destination.name}? This cannot be undone.`);
+                                if (!ok) return;
+                                try {
+                                  await apiClient.deleteDestination(destination.id);
+                                  setDestinationStatusMessage(`Deleted ${destination.name}.`);
+                                  await loadAll();
+                                } catch (err) {
+                                  const message = err instanceof Error ? err.message : "Unable to delete destination";
+                                  setDestinationStatusMessage(message.includes("destination_locked") ? "Locked destinations cannot be deleted." : message);
+                                }
+                              }}
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
                   ))}
-                  {!destinations.length ? <p className="text-sm text-slate-500">No destinations yet.</p> : null}
+                  {!destinationRows.length ? <p className="text-sm text-slate-500">No destinations match the current filters.</p> : null}
                 </div>
               </section>
             ) : null}
