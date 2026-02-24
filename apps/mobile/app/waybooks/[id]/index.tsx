@@ -31,6 +31,22 @@ export default function WaybookScreen() {
     queryKey: ["bookings", id],
     queryFn: () => mobileApi.listBookings(id)
   });
+  const stageState = useQuery({
+    queryKey: ["stage-state", id],
+    queryFn: () => mobileApi.getStageState(id)
+  });
+  const scenarios = useQuery({
+    queryKey: ["scenarios", id],
+    queryFn: () => mobileApi.listScenarios(id)
+  });
+  const decisionRounds = useQuery({
+    queryKey: ["decision-rounds", id],
+    queryFn: () => mobileApi.listDecisionRounds(id)
+  });
+  const digest = useQuery({
+    queryKey: ["digest", id],
+    queryFn: () => mobileApi.getTodayDigest(id)
+  });
   const expenses = useQuery({
     queryKey: ["expenses", id],
     queryFn: () => mobileApi.listExpenses(id)
@@ -41,6 +57,28 @@ export default function WaybookScreen() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
       <Text style={{ fontSize: 24, fontWeight: "700" }}>{timeline.data?.waybook.title ?? "Waybook"}</Text>
+
+      <View style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, gap: 8 }}>
+        <Text style={{ fontWeight: "700" }}>Lifecycle + AI</Text>
+        <Text style={{ color: "#475569", fontSize: 12 }}>
+          Stage: {stageState.data?.currentStage ?? "destinations"}
+        </Text>
+        <Text style={{ color: "#475569", fontSize: 12 }}>
+          Next actions: {digest.data?.nextActions.map((action) => action.title).join(" • ") || "none"}
+        </Text>
+        <Text style={{ color: "#475569", fontSize: 12 }}>
+          Scenarios: {scenarios.data?.items.length ?? 0} · Decision rounds: {decisionRounds.data?.items.length ?? 0}
+        </Text>
+        {scenarios.data?.items.slice(0, 2).map((scenario) => (
+          <View key={scenario.id} style={{ borderWidth: 1, borderColor: "#f1f5f9", borderRadius: 8, padding: 8 }}>
+            <Text style={{ fontWeight: "600" }}>{scenario.title}</Text>
+            <Text style={{ color: "#64748b", fontSize: 12 }}>{scenario.description ?? "No description"}</Text>
+            <Text style={{ color: "#64748b", fontSize: 12 }}>
+              {scenario.items.slice(0, 2).map((item) => `${item.itemType}: ${item.label}`).join(" • ")}
+            </Text>
+          </View>
+        ))}
+      </View>
 
       <View style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, padding: 12, gap: 8 }}>
         <Text style={{ fontWeight: "600" }}>Quick Entry</Text>

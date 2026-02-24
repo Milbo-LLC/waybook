@@ -79,6 +79,18 @@ export default function WaybookGuidedLifecyclePage() {
   const [dmTargetUserId, setDmTargetUserId] = useState("");
   const [tripPreferences, setTripPreferences] = useState<Awaited<ReturnType<typeof apiClient.getTripPreferences>> | null>(null);
   const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof apiClient.getBudgetSummary>> | null>(null);
+  const [mapLayer, setMapLayer] = useState<Awaited<ReturnType<typeof apiClient.getWaybookMap>> | null>(null);
+  const [aiSummary, setAiSummary] = useState<Awaited<ReturnType<typeof apiClient.generateAiSummary>> | null>(null);
+  const [scenarios, setScenarios] = useState<Awaited<ReturnType<typeof apiClient.listScenarios>>["items"]>([]);
+  const [decisionRounds, setDecisionRounds] = useState<Awaited<ReturnType<typeof apiClient.listDecisionRounds>>["items"]>([]);
+  const [todayDigest, setTodayDigest] = useState<Awaited<ReturnType<typeof apiClient.getTodayDigest>> | null>(null);
+  const [replayBlueprint, setReplayBlueprint] = useState<Awaited<ReturnType<typeof apiClient.buildReplay>> | null>(null);
+  const [assistantSessionId, setAssistantSessionId] = useState<string | null>(null);
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState<
+    Awaited<ReturnType<typeof apiClient.createAssistantSession>>["messages"]
+  >([]);
+  const [intelligenceStatus, setIntelligenceStatus] = useState<string | null>(null);
 
   const [destinationName, setDestinationName] = useState("");
   const [destinationRationale, setDestinationRationale] = useState("");
@@ -189,7 +201,11 @@ export default function WaybookGuidedLifecyclePage() {
       messagesResponse,
       dmThreadsResponse,
       tripPreferencesResponse,
-      budgetSummaryResponse
+      budgetSummaryResponse,
+      scenarioResponse,
+      decisionRoundResponse,
+      digestResponse,
+      mapResponse
     ] = await Promise.all([
       apiClient.getTimeline(waybookId),
       apiClient.listEntries(waybookId),
@@ -204,7 +220,11 @@ export default function WaybookGuidedLifecyclePage() {
       apiClient.listMessages(waybookId, "trip", "trip:main"),
       apiClient.listDMThreads(waybookId),
       apiClient.getTripPreferences(waybookId),
-      apiClient.getBudgetSummary(waybookId)
+      apiClient.getBudgetSummary(waybookId),
+      apiClient.listScenarios(waybookId),
+      apiClient.listDecisionRounds(waybookId),
+      apiClient.getTodayDigest(waybookId),
+      apiClient.getWaybookMap(waybookId)
     ]);
 
     setTimeline(timelineResponse);
@@ -234,6 +254,10 @@ export default function WaybookGuidedLifecyclePage() {
     }
     setTripPreferences(tripPreferencesResponse);
     setBudgetSummary(budgetSummaryResponse);
+    setScenarios(scenarioResponse.items);
+    setDecisionRounds(decisionRoundResponse.items);
+    setTodayDigest(digestResponse);
+    setMapLayer(mapResponse);
     setBudgetInput(tripPreferencesResponse.budgetAmountMinor !== null ? (tripPreferencesResponse.budgetAmountMinor / 100).toFixed(2) : "");
     setBudgetCurrencyInput(tripPreferencesResponse.budgetCurrency || tripPreferencesResponse.baseCurrency || "USD");
     setSplitMethodInput(tripPreferencesResponse.defaultSplitMethod);
@@ -519,7 +543,280 @@ export default function WaybookGuidedLifecyclePage() {
           {workspaceSection === "workflow" ? (
             <div className="space-y-4">
               {!canAccessActiveStage ? null : null}
- 
+
+              <section className="wb-surface p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="wb-title text-lg">AI planning workspace</h2>
+                    <p className="wb-muted mt-1 text-sm">
+                      Generate scenarios, resolve decision deadlocks, review map context, and run replay output.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        setIntelligenceStatus("Generating scenarios...");
+                        try {
+                          const response = await apiClient.generateScenarios(waybookId, {});
+                          setScenarios(response.items);
+                          setIntelligenceStatus("Scenarios regenerated.");
+                        } catch (err) {
+                          setIntelligenceStatus(err instanceof Error ? err.message : "Unable to generate scenarios.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Generate 3 scenarios
+                    </button>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        setIntelligenceStatus("Building decision round...");
+                        try {
+                          const created = await apiClient.createDecisionRound(waybookId, {
+                            scope: activeStage === "destinations" ? "destinations" : activeStage === "activities" ? "activities" : "planning",
+                            topic: `Stage tie-break: ${stageLabels[activeStage]}`,
+                            maxOptions: 5
+                          });
+                          setDecisionRounds((current) => [created, ...current]);
+                          setIntelligenceStatus("Decision round created.");
+                        } catch (err) {
+                          setIntelligenceStatus(err instanceof Error ? err.message : "Unable to create decision round.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Run decision round
+                    </button>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        setIntelligenceStatus("Refreshing digest...");
+                        try {
+                          const [digest, layer] = await Promise.all([
+                            apiClient.getTodayDigest(waybookId),
+                            apiClient.getWaybookMap(waybookId)
+                          ]);
+                          setTodayDigest(digest);
+                          setMapLayer(layer);
+                          setIntelligenceStatus("Digest refreshed.");
+                        } catch (err) {
+                          setIntelligenceStatus(err instanceof Error ? err.message : "Unable to refresh digest.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Refresh digest
+                    </button>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        setIntelligenceStatus("Generating AI summary...");
+                        try {
+                          const response = await apiClient.generateAiSummary(waybookId);
+                          setAiSummary(response);
+                          setIntelligenceStatus("Summary ready.");
+                        } catch (err) {
+                          setIntelligenceStatus(err instanceof Error ? err.message : "Unable to generate summary.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Generate summary
+                    </button>
+                    <button
+                      className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                      onClick={async () => {
+                        setIntelligenceStatus("Building replay package...");
+                        try {
+                          const replay = await apiClient.buildReplay(waybookId);
+                          setReplayBlueprint(replay);
+                          setIntelligenceStatus("Replay package created.");
+                        } catch (err) {
+                          setIntelligenceStatus(err instanceof Error ? err.message : "Unable to build replay package.");
+                        }
+                      }}
+                      type="button"
+                    >
+                      Build replay
+                    </button>
+                  </div>
+                </div>
+
+                {intelligenceStatus ? <p className="mt-2 text-xs text-slate-500">{intelligenceStatus}</p> : null}
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold">Today digest</p>
+                    {todayDigest ? (
+                      <div className="mt-2 space-y-2 text-sm">
+                        <p className="text-xs text-slate-500">Stage: {stageLabels[todayDigest.currentStage]}</p>
+                        <div className="space-y-1">
+                          {todayDigest.nextActions.map((action) => (
+                            <p key={action.id} className="text-xs text-slate-700">
+                              <span className="font-semibold">{action.title}:</span> {action.reason}
+                            </p>
+                          ))}
+                        </div>
+                        <div className="space-y-1">
+                          {todayDigest.riskFlags.map((risk, index) => (
+                            <p key={`${risk.message}-${index}`} className="text-xs text-slate-600">
+                              {risk.level.toUpperCase()}: {risk.message}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">Digest not loaded yet.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold">Map coverage</p>
+                    {mapLayer ? (
+                      <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        <p>{mapLayer.markers.length} markers currently mapped.</p>
+                        <p>{mapLayer.routes.length} route overlays generated.</p>
+                        <p>
+                          Marker types:{" "}
+                          {Array.from(new Set(mapLayer.markers.map((item) => item.entityType)))
+                            .slice(0, 5)
+                            .join(", ") || "none"}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">No map payload available.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Stage assistant</p>
+                      <button
+                        className="rounded border px-2 py-1 text-xs"
+                        onClick={() => {
+                          setAssistantSessionId(null);
+                          setAssistantMessages([]);
+                        }}
+                        type="button"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div className="mt-2 max-h-44 space-y-1 overflow-auto rounded bg-slate-50 p-2 text-xs">
+                      {assistantMessages.length ? (
+                        assistantMessages.map((message) => (
+                          <p key={message.id} className={message.role === "assistant" ? "text-slate-700" : "text-slate-500"}>
+                            <span className="font-semibold">{message.role === "assistant" ? "Assistant" : "You"}:</span>{" "}
+                            {message.content}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="text-slate-500">Ask for help with this stage.</p>
+                      )}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        className="wb-input"
+                        onChange={(event) => setAssistantInput(event.target.value)}
+                        placeholder={`Ask about ${stageLabels[activeStage].toLowerCase()}...`}
+                        value={assistantInput}
+                      />
+                      <button
+                        className="wb-btn-primary !px-3 !py-1.5 !text-xs"
+                        onClick={async () => {
+                          if (!assistantInput.trim()) return;
+                          try {
+                            if (!assistantSessionId) {
+                              const response = await apiClient.createAssistantSession(waybookId, {
+                                objective: `${stageLabels[activeStage]} workflow`,
+                                message: assistantInput.trim()
+                              });
+                              setAssistantSessionId(response.session.id);
+                              setAssistantMessages(response.messages);
+                            } else {
+                              const response = await apiClient.sendAssistantMessage(assistantSessionId, {
+                                content: assistantInput.trim(),
+                                stageHint: activeStage
+                              });
+                              setAssistantMessages((current) => [...current, ...response.messages]);
+                            }
+                            setAssistantInput("");
+                          } catch (err) {
+                            setIntelligenceStatus(err instanceof Error ? err.message : "Assistant is unavailable.");
+                          }
+                        }}
+                        type="button"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-sm font-semibold">Generated scenarios</p>
+                    <div className="mt-2 space-y-2">
+                      {scenarios.length ? (
+                        scenarios.map((scenario) => (
+                          <div key={scenario.id} className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-semibold">{scenario.title}</p>
+                              <button
+                                className="rounded border px-2 py-1 text-[11px]"
+                                onClick={async () => {
+                                  const updated = await apiClient.lockScenario(waybookId, scenario.id, {});
+                                  setScenarios((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+                                }}
+                                type="button"
+                              >
+                                Lock items
+                              </button>
+                            </div>
+                            <p className="mt-1 text-slate-500">{scenario.description}</p>
+                            <div className="mt-1 space-y-0.5">
+                              {scenario.items.slice(0, 4).map((item) => (
+                                <p key={item.id} className="text-slate-600">
+                                  {item.isLocked ? "🔒 " : ""}{item.itemType}: {item.label}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-500">No scenarios yet. Generate one set to start.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {aiSummary ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold">AI summary</p>
+                    <p className="mt-2 whitespace-pre-wrap text-xs text-slate-700">{aiSummary.summary}</p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Citations: {aiSummary.citations.map((citation) => citation.label).join(" • ")}
+                    </p>
+                  </div>
+                ) : null}
+
+                {decisionRounds.length ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold">Decision rounds</p>
+                    <div className="mt-2 space-y-2 text-xs">
+                      {decisionRounds.slice(0, 3).map((round) => (
+                        <div key={round.id} className="rounded border border-slate-200 bg-white p-2">
+                          <p className="font-semibold">{round.topic}</p>
+                          <p className="text-slate-600">{round.summary}</p>
+                          <p className="mt-1 text-slate-500">Recommendation: {round.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
 
             {activeStage === "destinations" && canAccessActiveStage ? (
               <section className="wb-surface p-5">
@@ -866,6 +1163,15 @@ export default function WaybookGuidedLifecyclePage() {
                               const result = await apiClient.createEmbeddedCheckoutSession(booking.id, {
                                 returnUrl: `${window.location.origin}/app/waybooks/${waybookId}`
                               });
+                              try {
+                                await apiClient.trackProductEvent({
+                                  eventType: "booking_action_clicked",
+                                  waybookId,
+                                  metadata: { bookingId: booking.id, action: "checkout" }
+                                });
+                              } catch {
+                                // non-blocking analytics
+                              }
                               window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
                             }}
                             type="button"
@@ -1094,9 +1400,70 @@ export default function WaybookGuidedLifecyclePage() {
                 <p className="wb-muted mt-1 text-sm">
                   This stage assembles a sanitized playbook from itinerary + reflections + ratings. Booking/payment details stay private.
                 </p>
-                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  Replay output endpoint and rendering scaffold are enabled in the lifecycle model. Final polish can now focus on ranking and formatting.
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    className="wb-btn-primary !px-3 !py-1.5 !text-xs"
+                    onClick={async () => {
+                      const replay = await apiClient.buildReplay(waybookId);
+                      setReplayBlueprint(replay);
+                    }}
+                    type="button"
+                  >
+                    Build replay package
+                  </button>
+                  <button
+                    className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+                    onClick={async () => {
+                      const replay = replayBlueprint ?? (await apiClient.buildReplay(waybookId));
+                      setReplayBlueprint(replay);
+                      const created = await apiClient.createWaybook({
+                        title: `${timeline.waybook.title} template`,
+                        description: replay.templatePrompt,
+                        startDate: null,
+                        endDate: null,
+                        timeframeLabel: timeline.waybook.timeframeLabel ?? "Flexible timeframe",
+                        earliestStartDate: null,
+                        latestEndDate: null,
+                        visibility: "private"
+                      });
+                      if (tripPreferences) {
+                        await apiClient.updateTripPreferences(created.id, {
+                          baseCurrency: tripPreferences.baseCurrency,
+                          budgetAmountMinor: tripPreferences.budgetAmountMinor,
+                          budgetCurrency: tripPreferences.budgetCurrency,
+                          defaultSplitMethod: tripPreferences.defaultSplitMethod,
+                          pace: tripPreferences.pace,
+                          budgetTier: tripPreferences.budgetTier,
+                          accessibilityNotes: tripPreferences.accessibilityNotes,
+                          quietHoursStart: tripPreferences.quietHoursStart,
+                          quietHoursEnd: tripPreferences.quietHoursEnd
+                        });
+                      }
+                      router.push(`/app/waybooks/${created.id}`);
+                    }}
+                    type="button"
+                  >
+                    Use as template
+                  </button>
                 </div>
+                {replayBlueprint ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                    <p className="font-semibold">{replayBlueprint.headline}</p>
+                    <p className="mt-1 text-xs">{replayBlueprint.summary}</p>
+                    <div className="mt-3 space-y-2">
+                      {replayBlueprint.sections.map((section) => (
+                        <div key={section.title} className="rounded border border-slate-200 bg-white p-2">
+                          <p className="text-xs font-semibold">{section.title}</p>
+                          <p className="mt-1 text-xs text-slate-600">{section.items.join(" • ") || "No items yet."}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    Build a replay package to generate highlights and a reusable trip template.
+                  </div>
+                )}
               </section>
             ) : null}
           </div>

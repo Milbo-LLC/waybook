@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createWaybookInputSchema } from "@waybook/contracts";
 import { AppTopbar } from "@/components/app-topbar";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { PageShell } from "@/components/page-shell";
@@ -10,6 +11,71 @@ import { apiClient } from "@/lib/api";
 import { getSession, type SessionUser } from "@/lib/auth";
 
 type DateMode = "exact" | "flexible";
+
+const monthByName: Record<string, number> = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12
+};
+
+const parseKickoffDraft = (text: string) => {
+  const normalized = text.trim();
+  const lower = normalized.toLowerCase();
+
+  const patch: {
+    title: string;
+    description: string | null;
+    timeframeLabel: string | null;
+    budgetAmount: string;
+    budgetCurrency: string;
+    splitMethod: "equal" | "custom" | "percentage" | "shares";
+  } = {
+    title: "Trip",
+    description: normalized || null,
+    timeframeLabel: null,
+    budgetAmount: "",
+    budgetCurrency: "USD",
+    splitMethod: "equal"
+  };
+
+  const titleMatch = normalized.match(/^([^.!\n]{3,80})/);
+  if (titleMatch?.[1]) {
+    patch.title = titleMatch[1].trim();
+  }
+
+  const monthMatch = lower.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/
+  );
+  if (monthMatch?.[1]) {
+    const month = monthMatch[1];
+    const monthNumber = monthByName[month] ?? new Date().getUTCMonth() + 1;
+    const now = new Date();
+    const year = now.getUTCMonth() + 1 > monthNumber ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+    patch.timeframeLabel = `${month[0]?.toUpperCase()}${month.slice(1)} ${year}`;
+  }
+
+  const budgetMatch = normalized.match(/\$?\s?(\d[\d,]*(?:\.\d{1,2})?)/);
+  if (budgetMatch?.[1]) {
+    const amount = Number(budgetMatch[1].replace(/,/g, ""));
+    if (Number.isFinite(amount) && amount > 0) patch.budgetAmount = amount.toFixed(2);
+  }
+
+  if (lower.includes("custom split")) patch.splitMethod = "custom";
+  if (lower.includes("percentage split")) patch.splitMethod = "percentage";
+  if (lower.includes("share split") || lower.includes("shares split")) patch.splitMethod = "shares";
+  if (lower.includes("equal split")) patch.splitMethod = "equal";
+
+  return patch;
+};
 
 export default function NewTripPage() {
   const router = useRouter();
@@ -25,6 +91,8 @@ export default function NewTripPage() {
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetCurrency, setBudgetCurrency] = useState("USD");
   const [splitMethod, setSplitMethod] = useState<"equal" | "custom" | "percentage" | "shares">("equal");
+  const [kickoffText, setKickoffText] = useState("");
+  const [kickoffStatus, setKickoffStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +129,63 @@ export default function NewTripPage() {
             Start with exact dates or a general timeframe. You can update all details later.
           </p>
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+        </section>
+
+        <section className="mt-4 wb-surface p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="wb-title text-lg">Conversational kickoff</h2>
+            <button
+              className="wb-btn-secondary !px-3 !py-1.5 !text-xs"
+              onClick={async () => {
+                const draft = parseKickoffDraft(kickoffText);
+                const parseResult = createWaybookInputSchema.safeParse({
+                  title: draft.title,
+                  description: draft.description,
+                  startDate: null,
+                  endDate: null,
+                  timeframeLabel: draft.timeframeLabel ?? "Flexible timeframe",
+                  earliestStartDate: null,
+                  latestEndDate: null,
+                  visibility: "private"
+                });
+                if (!parseResult.success) {
+                  setKickoffStatus("Could not extract a valid draft. Add destination, month, or budget details.");
+                  return;
+                }
+                setTitle(draft.title);
+                setDescription(draft.description ?? "");
+                setDateMode("flexible");
+                setTimeframeLabel(draft.timeframeLabel ?? "Flexible timeframe");
+                setEarliestStartDate("");
+                setLatestEndDate("");
+                setBudgetAmount(draft.budgetAmount);
+                setBudgetCurrency(draft.budgetCurrency);
+                setSplitMethod(draft.splitMethod);
+                setKickoffStatus("Draft applied. Review and create when ready.");
+                try {
+                  await apiClient.trackProductEvent({
+                    eventType: "ai_prompt_started",
+                    metadata: { surface: "new_trip_kickoff" }
+                  });
+                } catch {
+                  // non-blocking analytics
+                }
+              }}
+              type="button"
+            >
+              Generate draft
+            </button>
+          </div>
+          <p className="wb-muted mt-1 text-sm">
+            Example: “Beach trip in June with a $2500 budget and equal split for four friends.”
+          </p>
+          <textarea
+            className="wb-input mt-3 min-h-24 resize-y"
+            onChange={(event) => setKickoffText(event.target.value)}
+            placeholder="Describe your trip in plain language..."
+            value={kickoffText}
+          />
+          {kickoffStatus ? <p className="mt-2 text-xs text-slate-600">{kickoffStatus}</p> : null}
         </section>
 
         <form

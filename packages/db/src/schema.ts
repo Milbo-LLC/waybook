@@ -857,3 +857,114 @@ export const tripMessageReceipts = pgTable(
     index("trip_message_receipts_user_status_idx").on(table.userId, table.status)
   ]
 );
+
+export const productEvents = pgTable(
+  "product_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    waybookId: uuid("waybook_id").references(() => waybooks.id, { onDelete: "set null" }),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    metadata: jsonb("metadata"),
+    createdAt: now()
+  },
+  (table) => [
+    index("product_events_type_created_idx").on(table.eventType, table.createdAt),
+    index("product_events_waybook_created_idx").on(table.waybookId, table.createdAt)
+  ]
+);
+
+export const assistantSessions = pgTable(
+  "assistant_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    objective: varchar("objective", { length: 500 }),
+    draftJson: jsonb("draft_json").notNull().default(sql`'{}'::jsonb`),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [index("assistant_sessions_waybook_created_idx").on(table.waybookId, table.createdAt)]
+);
+
+export const assistantMessages = pgTable(
+  "assistant_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => assistantSessions.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 16 }).notNull(),
+    content: text("content").notNull(),
+    metadata: jsonb("metadata"),
+    createdAt: now()
+  },
+  (table) => [index("assistant_messages_session_created_idx").on(table.sessionId, table.createdAt)]
+);
+
+export const tripScenarios = pgTable(
+  "trip_scenarios",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    scenarioType: varchar("scenario_type", { length: 24 }).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: text("description"),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: now(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("trip_scenarios_waybook_type_unique").on(table.waybookId, table.scenarioType),
+    index("trip_scenarios_waybook_created_idx").on(table.waybookId, table.createdAt)
+  ]
+);
+
+export const tripScenarioItems = pgTable(
+  "trip_scenario_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scenarioId: uuid("scenario_id")
+      .notNull()
+      .references(() => tripScenarios.id, { onDelete: "cascade" }),
+    itemType: varchar("item_type", { length: 24 }).notNull(),
+    sourceId: uuid("source_id"),
+    label: varchar("label", { length: 220 }).notNull(),
+    details: text("details"),
+    score: integer("score"),
+    orderIndex: integer("order_index").notNull().default(0),
+    isLocked: boolean("is_locked").notNull().default(false),
+    createdAt: now()
+  },
+  (table) => [index("trip_scenario_items_scenario_order_idx").on(table.scenarioId, table.orderIndex)]
+);
+
+export const decisionRounds = pgTable(
+  "decision_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    waybookId: uuid("waybook_id")
+      .notNull()
+      .references(() => waybooks.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    topic: varchar("topic", { length: 220 }).notNull(),
+    scope: varchar("scope", { length: 40 }).notNull().default("planning"),
+    summary: text("summary").notNull(),
+    recommendation: text("recommendation").notNull(),
+    optionsJson: jsonb("options_json").notNull().default(sql`'[]'::jsonb`),
+    createdAt: now()
+  },
+  (table) => [index("decision_rounds_waybook_created_idx").on(table.waybookId, table.createdAt)]
+);

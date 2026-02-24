@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  aiSummaryResponseSchema,
   createInviteInputSchema,
   createPublicReactionInputSchema,
   deleteWaybookInputSchema,
@@ -7,12 +8,13 @@ import {
   type DaySummaryDTO,
   type CreateWaybookInput,
   itineraryTypeSchema,
+  mapLayerDtoSchema,
   upsertDaySummaryInputSchema,
   updateWaybookInputSchema,
   waybookDtoSchema
 } from "@waybook/contracts";
 import { schema } from "@waybook/db";
-import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getWaybookAccess, hasMinimumRole } from "../lib/access.js";
@@ -109,6 +111,12 @@ waybookRoutes.post("/waybooks", requireAuthMiddleware, zValidator("json", create
     userId: user.id,
     role: "owner",
     invitedBy: user.id
+  });
+  await db.insert(schema.productEvents).values({
+    userId: user.id,
+    waybookId: created.id,
+    eventType: "trip_created",
+    metadata: { source: "create_waybook" }
   });
   return c.json(waybookDtoSchema.parse(mapWaybook(created)), 201);
 });
@@ -881,12 +889,138 @@ waybookRoutes.get("/waybooks/:waybookId/map", requireAuthMiddleware, async (c) =
   const user = c.get("user");
   const access = await getWaybookAccess(db, waybookId, user.id);
   if (!access || !hasMinimumRole(access.role, "viewer")) return c.json({ error: "not_found" }, 404);
+
+  const destinationRows = await db
+    .select()
+    .from(schema.tripDestinations)
+    .where(eq(schema.tripDestinations.waybookId, waybookId))
+    .orderBy(asc(schema.tripDestinations.createdAt));
+  const activityRows = await db
+    .select()
+    .from(schema.activityCandidates)
+    .where(eq(schema.activityCandidates.waybookId, waybookId))
+    .orderBy(desc(schema.activityCandidates.createdAt));
+  const planningRows = await db
+    .select()
+    .from(schema.planningItems)
+    .where(eq(schema.planningItems.waybookId, waybookId))
+    .orderBy(desc(schema.planningItems.createdAt));
+  const itineraryRows = await db
+    .select()
+    .from(schema.itineraryItems)
+    .where(eq(schema.itineraryItems.waybookId, waybookId))
+    .orderBy(desc(schema.itineraryItems.startTime));
+  const entryRows = await db
+    .select()
+    .from(schema.entries)
+    .where(eq(schema.entries.waybookId, waybookId))
+    .orderBy(desc(schema.entries.capturedAt))
+    .limit(80);
+
+  const destinationById = new Map(destinationRows.map((row) => [row.id, row]));
+  const markers = [
+    ...destinationRows
+      .filter((row) => row.lat !== null && row.lng !== null)
+      .map((row) => ({
+        entityType: "destination" as const,
+        entityId: row.id,
+        lat: row.lat as number,
+        lng: row.lng as number,
+        status: row.status === "locked" ? ("locked" as const) : ("proposed" as const),
+        label: row.name,
+        subtitle: row.rationale
+      })),
+    ...activityRows
+      .map((row) => {
+        const destination = destinationById.get(row.destinationId);
+        if (!destination || destination.lat === null || destination.lng === null) return null;
+        return {
+          entityType: "activity" as const,
+          entityId: row.id,
+          lat: destination.lat as number,
+          lng: destination.lng as number,
+          status: row.status === "locked" ? ("locked" as const) : ("proposed" as const),
+          label: row.title,
+          subtitle: row.providerHint ?? destination.name
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+    ...planningRows
+      .filter((row) => row.lat !== null && row.lng !== null)
+      .map((row) => ({
+        entityType: "planning_item" as const,
+        entityId: row.id,
+        lat: row.lat as number,
+        lng: row.lng as number,
+        status: row.status === "booked" || row.status === "done" ? ("confirmed" as const) : ("proposed" as const),
+        label: row.title,
+        subtitle: row.category
+      })),
+    ...itineraryRows
+      .filter((row) => row.lat !== null && row.lng !== null)
+      .map((row) => ({
+        entityType: "itinerary_item" as const,
+        entityId: row.id,
+        lat: row.lat as number,
+        lng: row.lng as number,
+        status: "active" as const,
+        label: row.name,
+        subtitle: row.type
+      })),
+    ...entryRows
+      .filter((row) => row.lat !== null && row.lng !== null)
+      .map((row) => ({
+        entityType: "entry" as const,
+        entityId: row.id,
+        lat: row.lat as number,
+        lng: row.lng as number,
+        status: "captured" as const,
+        label: row.placeName ?? "Captured moment",
+        subtitle: row.textContent ? row.textContent.slice(0, 80) : null
+      }))
+  ];
+
+  const lockedDestinationPoints = destinationRows
+    .filter((row) => row.status === "locked" && row.lat !== null && row.lng !== null)
+    .map((row) => ({
+      lat: row.lat as number,
+      lng: row.lng as number
+    }));
+  const itineraryPoints = itineraryRows
+    .filter((row) => row.lat !== null && row.lng !== null)
+    .sort((a, b) => {
+      const aTime = a.startTime?.getTime() ?? 0;
+      const bTime = b.startTime?.getTime() ?? 0;
+      return aTime - bTime;
+    })
+    .map((row) => ({
+      lat: row.lat as number,
+      lng: row.lng as number
+    }));
+
+  const routes = [];
+  if (itineraryPoints.length >= 2) {
+    routes.push({
+      id: `route-itinerary-${waybookId}`,
+      label: "Itinerary flow",
+      travelMode: "mixed" as const,
+      coordinates: itineraryPoints
+    });
+  }
+  if (lockedDestinationPoints.length >= 2) {
+    routes.push({
+      id: `route-destinations-${waybookId}`,
+      label: "Locked destination path",
+      travelMode: "mixed" as const,
+      coordinates: lockedDestinationPoints
+    });
+  }
+
   return c.json(
-    {
-      error: "not_implemented",
-      message: `Map visualization endpoint is planned post-MVP for waybook ${waybookId}.`
-    },
-    501
+    mapLayerDtoSchema.parse({
+      markers,
+      routes
+    })
   );
 });
 
@@ -896,12 +1030,83 @@ waybookRoutes.post("/waybooks/:waybookId/ai-summary", requireAuthMiddleware, asy
   const user = c.get("user");
   const access = await getWaybookAccess(db, waybookId, user.id);
   if (!access || !hasMinimumRole(access.role, "editor")) return c.json({ error: "not_found" }, 404);
+
+  const [stageState] = await db.select().from(schema.tripStageState).where(eq(schema.tripStageState.waybookId, waybookId)).limit(1);
+  const destinations = await db.select().from(schema.tripDestinations).where(eq(schema.tripDestinations.waybookId, waybookId));
+  const activities = await db.select().from(schema.activityCandidates).where(eq(schema.activityCandidates.waybookId, waybookId));
+  const bookings = await db.select().from(schema.bookingRecords).where(eq(schema.bookingRecords.waybookId, waybookId));
+  const checklist = await db.select().from(schema.tripChecklistItems).where(eq(schema.tripChecklistItems.waybookId, waybookId));
+  const entries = await db
+    .select()
+    .from(schema.entries)
+    .where(eq(schema.entries.waybookId, waybookId))
+    .orderBy(desc(schema.entries.capturedAt))
+    .limit(40);
+
+  const lockedDestinations = destinations.filter((row) => row.status === "locked");
+  const lockedActivities = activities.filter((row) => row.status === "locked");
+  const confirmedBookings = bookings.filter((row) => row.bookingStatus === "confirmed");
+  const pendingBookings = bookings.filter((row) => row.bookingStatus === "draft" || row.bookingStatus === "pending_checkout");
+  const criticalOpen = checklist.filter((row) => row.isCritical && (row.status === "todo" || row.status === "in_progress"));
+
+  let nextFocus = "Lock one destination and run activity research.";
+  if (lockedDestinations.length > 0) nextFocus = "Lock at least three activities aligned to your destination.";
+  if (lockedActivities.length >= 3) nextFocus = "Confirm one stay and one activity booking.";
+  if (confirmedBookings.length >= 2) nextFocus = "Generate itinerary and clear critical prep tasks.";
+  if (criticalOpen.length === 0 && confirmedBookings.length >= 2) nextFocus = "Shift into capture mode and prepare replay highlights.";
+
+  const summaryLines = [
+    `Trip: ${access.waybook.title}`,
+    `Current stage: ${stageState?.currentStage ?? "destinations"}`,
+    `Destinations: ${lockedDestinations.length} locked / ${destinations.length} total`,
+    `Activities: ${lockedActivities.length} locked / ${activities.length} total`,
+    `Bookings: ${confirmedBookings.length} confirmed, ${pendingBookings.length} pending`,
+    `Prep: ${criticalOpen.length} critical tasks open`,
+    `Capture: ${entries.length} recent entries analyzed`,
+    `Next best focus: ${nextFocus}`
+  ];
+
+  const citations = [
+    ...lockedDestinations.slice(0, 2).map((row) => ({
+      sourceType: "destination" as const,
+      sourceId: row.id,
+      label: row.name
+    })),
+    ...lockedActivities.slice(0, 2).map((row) => ({
+      sourceType: "activity" as const,
+      sourceId: row.id,
+      label: row.title
+    })),
+    ...confirmedBookings.slice(0, 2).map((row) => ({
+      sourceType: "booking" as const,
+      sourceId: row.id,
+      label: row.title
+    })),
+    ...entries.slice(0, 1).map((row) => ({
+      sourceType: "entry" as const,
+      sourceId: row.id,
+      label: row.textContent?.slice(0, 80) || "Recent entry"
+    })),
+    ...criticalOpen.slice(0, 1).map((row) => ({
+      sourceType: "checklist" as const,
+      sourceId: row.id,
+      label: row.title
+    }))
+  ];
+
+  await db.insert(schema.productEvents).values({
+    userId: user.id,
+    waybookId,
+    eventType: "ai_prompt_started",
+    metadata: { source: "ai_summary" }
+  });
+
   return c.json(
-    {
-      error: "not_implemented",
-      message: `AI summary generation is planned post-MVP for waybook ${waybookId}.`
-    },
-    501
+    aiSummaryResponseSchema.parse({
+      summary: summaryLines.join("\n"),
+      citations,
+      generatedAt: new Date().toISOString()
+    })
   );
 });
 
@@ -1040,8 +1245,37 @@ waybookRoutes.get("/public/w/:publicSlug/playbook", optionalAuthMiddleware, asyn
   }
 
   const days = [...dayMap.values()].sort((a, b) => (a.date > b.date ? -1 : 1));
+  const mustDoMoments = entryDtos
+    .filter((entry) => entry.guidance?.isMustDo && entry.textContent)
+    .map((entry) => entry.textContent as string)
+    .slice(0, 5);
+  const reactionCounts = reactionsRows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.reactionType] = (acc[row.reactionType] ?? 0) + 1;
+    return acc;
+  }, {});
+  const topReaction = Object.entries(reactionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "worth_it";
+  const blueprint = {
+    headline: `${waybook.title} reusable blueprint`,
+    summary:
+      days.find((day) => day.summary?.summaryText)?.summary?.summaryText ??
+      "Replay generated from captured steps and public reactions.",
+    practicalBlocks: [
+      {
+        title: "Repeat next time",
+        items: mustDoMoments.length ? mustDoMoments : ["Capture must-do moments during trip replay."]
+      },
+      {
+        title: "Crowd sentiment",
+        items: [`Most common public reaction: ${topReaction}`]
+      },
+      {
+        title: "Kickoff prompt",
+        items: [`Plan a trip with the same vibe as ${waybook.title}, preserving the strongest moments.`]
+      }
+    ]
+  };
 
-  return c.json({ waybook: mapWaybook(waybook), days });
+  return c.json({ waybook: mapWaybook(waybook), days, blueprint });
 });
 
 waybookRoutes.post(

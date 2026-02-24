@@ -12,6 +12,7 @@ import { mediaRoutes } from "./routes/media.js";
 import { promptRoutes } from "./routes/prompts.js";
 import { planningRoutes } from "./routes/planning.js";
 import { lifecycleRoutes } from "./routes/lifecycle.js";
+import { intelligenceRoutes } from "./routes/intelligence.js";
 import { waybookRoutes } from "./routes/waybooks.js";
 import type { AppBindings } from "./types.js";
 
@@ -48,5 +49,6 @@ app.route("/v1", mediaRoutes);
 app.route("/v1", promptRoutes);
 app.route("/v1", planningRoutes);
 app.route("/v1", lifecycleRoutes);
+app.route("/v1", intelligenceRoutes);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

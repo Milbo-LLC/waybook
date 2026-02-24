@@ -4,6 +4,7 @@ export * from "./common.js";
 export * from "./entries.js";
 export * from "./enums.js";
 export * from "./experience.js";
+export * from "./intelligence.js";
 export * from "./media.js";
 export * from "./lifecycle.js";
 export * from "./planning.js";

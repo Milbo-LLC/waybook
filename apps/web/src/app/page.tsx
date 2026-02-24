@@ -87,7 +87,7 @@ export default function MarketingPage() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">Dashboard</p>
                   <h1 className="wb-title mt-1 text-3xl">Your trips</h1>
-                  <p className="wb-muted mt-2 text-sm">Plan, coordinate, book, and capture everything in one place.</p>
+                  <p className="wb-muted mt-2 text-sm">Plan, decide, book, capture, and replay every trip in one place.</p>
                 </div>
                 <Link href="/app/waybooks/new" className="wb-btn-primary sm:hidden">
                   New Trip
@@ -162,9 +162,9 @@ export default function MarketingPage() {
             <div className="grid gap-8 p-8 md:grid-cols-[1.15fr_0.85fr] md:p-10">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">Travel lifecycle, unified</p>
-                <h1 className="wb-title mt-3 text-4xl leading-tight md:text-5xl">Plan together. Book smoothly. Capture stories that last.</h1>
+                <h1 className="wb-title mt-3 text-4xl leading-tight md:text-5xl">Plan. Decide. Book. Capture. Replay.</h1>
                 <p className="wb-muted mt-4 max-w-2xl text-base">
-                  Waybook gives your group one source of truth for ideas, itinerary, bookings, expenses, and reflections.
+                  Waybook gives friend groups one source of truth for ideas, decisions, bookings, expenses, and replayable lessons.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link className="wb-btn-primary" href={"/signup" as any}>

@@ -66,7 +66,22 @@ import type {
   TripStageStateDTO,
   ReadinessScoreDTO,
   ItineraryGenerationResultDTO,
+  ListScenariosResponse,
   ChecklistItemDTO,
+  CreateAssistantMessageInput,
+  CreateAssistantSessionInput,
+  CreateDecisionRoundInput,
+  GenerateScenariosInput,
+  LockScenarioInput,
+  MapLayerDTO,
+  AiSummaryResponse,
+  AssistantSessionResponse,
+  DecisionRoundDTO,
+  ScenarioDTO,
+  ListDecisionRoundsResponse,
+  ReplayBlueprintDTO,
+  TrackProductEventInput,
+  TripDigestDTO,
   TripTaskDTO,
   TripMessageDTO,
   UpsertDaySummaryInput,
@@ -133,6 +148,10 @@ export class WaybookApiClient {
 
   getMe() {
     return this.request<{ userId: string; email: string | null }>("/v1/me");
+  }
+
+  trackProductEvent(input: TrackProductEventInput) {
+    return this.request<{ success: true }>("/v1/events", { method: "POST", body: input });
   }
 
   listWaybooks() {
@@ -211,6 +230,59 @@ export class WaybookApiClient {
 
   recalculateStage(waybookId: string) {
     return this.request<TripStageStateDTO>(`/v1/waybooks/${waybookId}/stage/recalculate`, { method: "POST", body: {} });
+  }
+
+  getWaybookMap(waybookId: string) {
+    return this.request<MapLayerDTO>(`/v1/waybooks/${waybookId}/map`);
+  }
+
+  generateAiSummary(waybookId: string) {
+    return this.request<AiSummaryResponse>(`/v1/waybooks/${waybookId}/ai-summary`, { method: "POST", body: {} });
+  }
+
+  createAssistantSession(waybookId: string, input: CreateAssistantSessionInput) {
+    return this.request<AssistantSessionResponse>(`/v1/waybooks/${waybookId}/assistant/session`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  sendAssistantMessage(sessionId: string, input: CreateAssistantMessageInput) {
+    return this.request<AssistantSessionResponse>(`/v1/assistant/sessions/${sessionId}/messages`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  listScenarios(waybookId: string) {
+    return this.request<ListScenariosResponse>(`/v1/waybooks/${waybookId}/scenarios`);
+  }
+
+  generateScenarios(waybookId: string, input: GenerateScenariosInput = {}) {
+    return this.request<ListScenariosResponse>(`/v1/waybooks/${waybookId}/scenarios:generate`, {
+      method: "POST",
+      body: input
+    });
+  }
+
+  lockScenario(waybookId: string, scenarioId: string, input: LockScenarioInput = {}) {
+    return this.request<ScenarioDTO>(`/v1/waybooks/${waybookId}/scenarios/${scenarioId}/lock`, { method: "POST", body: input });
+  }
+
+  listDecisionRounds(waybookId: string) {
+    return this.request<ListDecisionRoundsResponse>(`/v1/waybooks/${waybookId}/decision-rounds`);
+  }
+
+  createDecisionRound(waybookId: string, input: CreateDecisionRoundInput) {
+    return this.request<DecisionRoundDTO>(`/v1/waybooks/${waybookId}/decision-rounds`, { method: "POST", body: input });
+  }
+
+  getTodayDigest(waybookId: string) {
+    return this.request<TripDigestDTO>(`/v1/waybooks/${waybookId}/digest/today`);
+  }
+
+  buildReplay(waybookId: string) {
+    return this.request<ReplayBlueprintDTO>(`/v1/waybooks/${waybookId}/replay/build`, { method: "POST", body: {} });
   }
 
   listDestinations(waybookId: string) {

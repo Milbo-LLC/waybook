@@ -21,6 +21,11 @@ async function fetchPublic(slug: string) {
         confidenceScore: number;
       }[];
     }[];
+    blueprint?: {
+      headline: string;
+      summary: string;
+      practicalBlocks: Array<{ title: string; items: string[] }>;
+    };
   };
 }
 
@@ -40,6 +45,20 @@ export default async function PublicWaybookPage({ params }: { params: Promise<{ 
     <PageShell>
       <h1 className="text-3xl font-semibold">{data.waybook.title}</h1>
       {data.waybook.description ? <p className="text-slate-700">{data.waybook.description}</p> : null}
+      {data.blueprint ? (
+        <section className="rounded-xl border bg-slate-50 p-4">
+          <h2 className="text-lg font-semibold">{data.blueprint.headline}</h2>
+          <p className="mt-1 text-sm text-slate-600">{data.blueprint.summary}</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {data.blueprint.practicalBlocks.map((block) => (
+              <article key={block.title} className="rounded border border-slate-200 bg-white p-3">
+                <p className="text-sm font-semibold">{block.title}</p>
+                <p className="mt-1 text-xs text-slate-600">{block.items.join(" • ")}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <div className="grid gap-4">
         {data.days.map((day) => (
           <section key={day.date} className="rounded-xl border bg-white p-4">
